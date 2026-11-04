@@ -146,6 +146,9 @@ export function WithdrawForm({ userId }: WithdrawFormProps) {
                 description={
                   balance ? t('availableHint', { amount: balance.available, symbol: balance.token.symbol }) : undefined
                 }
+                // Hint under the input (Mantine puts it between label and input by default),
+                // so all three inputs of the row stay on one line.
+                inputWrapperOrder={['label', 'input', 'description', 'error']}
                 inputMode="decimal"
                 rightSectionWidth={60}
                 rightSection={
