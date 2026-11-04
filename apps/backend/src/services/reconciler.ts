@@ -1,3 +1,4 @@
+import type { CircleTransaction } from '../circle/circle.types.js';
 import type { CircleClient } from '../circle/client.js';
 import type { Db } from '../lib/db.js';
 import type { Logger } from '../lib/logger.types.js';
@@ -61,11 +62,21 @@ export class Reconciler {
   async syncWallet(walletId: string): Promise<number> {
     let n = 0;
     for await (const tx of this.circle.listTransactions({ walletIds: [walletId] })) {
-      if (await this.ledger.apply(tx)) {
+      if (await this.applySafely(tx)) {
         n++;
       }
     }
     return n;
+  }
+
+  /** One transaction that cannot be applied must not stop the sync of all the others. */
+  private async applySafely(tx: CircleTransaction) {
+    try {
+      return await this.ledger.apply(tx);
+    } catch (e) {
+      this.log.error({ err: e, circleTxId: tx.id }, 'circle tx not applied');
+      return null;
+    }
   }
 
   private async resubmitStuckWithdrawals() {
@@ -95,7 +106,7 @@ export class Reconciler {
     for (let i = 0; i < users.length; i += WALLET_CHUNK) {
       const walletIds = users.slice(i, i + WALLET_CHUNK).map((u) => u.circleWalletId);
       for await (const tx of this.circle.listTransactions({ walletIds, from })) {
-        await this.ledger.apply(tx);
+        await this.applySafely(tx);
       }
     }
 

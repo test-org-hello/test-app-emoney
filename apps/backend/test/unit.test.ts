@@ -10,13 +10,25 @@ describe('parseAmount', () => {
     ['1.500000', '1.5'],
     ['100.00', '100'],
     ['0.000001', '0.000001'],
+    ['1.500000000', '1.5'], // trailing zeros are not extra precision
+    ['123456789012345678901234567890.5', '123456789012345678901234567890.5'], // no integer-digit cap
     [' 2.25 ', '2.25'],
   ])('accepts %s -> %s', (input, out) => {
     expect(parseAmount(input, 6)).toEqual({ ok: true, value: out });
   });
 
-  it.each(['0', '0.000', '-1', '1e5', 'abc', '01', '.5', '1.', '0.0000001'])('rejects %s', (input) => {
-    expect(parseAmount(input, 6).ok).toBe(false);
+  it.each([
+    ['0', 'zero'],
+    ['0.000', 'zero'],
+    ['-1', 'format'],
+    ['1e5', 'format'],
+    ['abc', 'format'],
+    ['01', 'format'],
+    ['.5', 'format'],
+    ['1.', 'format'],
+    ['0.0000001', 'decimals'],
+  ])('rejects %s (%s)', (input, error) => {
+    expect(parseAmount(input, 6)).toMatchObject({ ok: false, error });
   });
 });
 

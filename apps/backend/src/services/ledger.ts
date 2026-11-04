@@ -3,6 +3,8 @@ import type { CircleTransaction } from '../circle/circle.types.js';
 import type { Db } from '../lib/db.js';
 import type { Logger } from '../lib/logger.types.js';
 import type { TokenService } from './tokens.js';
+import { parseAmount } from '../lib/amount.js';
+import { InvalidCircleAmountError } from './ledger.errors.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -34,7 +36,28 @@ export class LedgerService {
       return null;
     }
 
-    await this.tokens.ensure(tx.tokenId);
+    const token = await this.tokens.ensure(tx.tokenId);
+    // Circle reports what actually happened on-chain, so the amount is recorded exactly as
+    // reported (storage is unconstrained numeric). Only the format is enforced here; the
+    // token's `decimals` is our metadata and may be wrong - see the warning below.
+    const amount = parseAmount(tx.amounts[0], Number.POSITIVE_INFINITY);
+    if (!amount.ok) {
+      if (amount.error === 'zero') {
+        // Zero-value transfers (e.g. token spam) have no effect on balances.
+        this.log.debug({ circleTxId: tx.id }, 'skip zero-amount circle tx');
+        return null;
+      }
+      // Not a decimal number at all: nothing exact to record. Fail loudly (webhook -> 5xx, logged).
+      throw new InvalidCircleAmountError(tx.id, tx.amounts[0], amount.reason);
+    }
+    const fractionDigits = amount.value.split('.')[1]?.length ?? 0;
+    if (fractionDigits > token.decimals) {
+      // An on-chain amount cannot have more decimals than its token: our metadata is off.
+      this.log.warn(
+        { circleTxId: tx.id, tokenId: token.id, amount: amount.value, decimals: token.decimals },
+        'circle amount has more decimals than the token metadata; recorded as reported',
+      );
+    }
 
     const result = await this.db.applyCircleTransaction({
       userId: user.id,
@@ -42,7 +65,7 @@ export class LedgerService {
       circleTxId: tx.id,
       state: tx.state,
       tokenId: tx.tokenId,
-      amount: tx.amounts[0],
+      amount: amount.value,
       source: tx.sourceAddress ?? null,
       destination: tx.destinationAddress ?? null,
       txHash: tx.txHash || null,

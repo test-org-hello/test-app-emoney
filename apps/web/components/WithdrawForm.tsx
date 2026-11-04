@@ -51,7 +51,7 @@ export function WithdrawForm({ userId }: WithdrawFormProps) {
     if (!AMOUNT_RE.test(amount)) {
       return t('errorNumber');
     }
-    if ((amount.split('.')[1] ?? '').length > decimals) {
+    if ((amount.split('.')[1] ?? '').replace(/0+$/, '').length > decimals) {
       return t('errorDecimals', { decimals });
     }
     if (cmpDecimal(amount, '0') <= 0) {

@@ -301,6 +301,51 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
     expect(Number(usdc(await details(alice.id))!.available)).toBe(Number(before) + 4);
   });
 
+  it('incoming amount is recorded exactly as Circle reports it, even beyond token metadata', async () => {
+    const before = usdc(await details(alice.id))!.available;
+    // USDC metadata says 6 decimals; Circle is the source of truth for what happened on-chain.
+    const tx = circle.addTx({
+      walletId: alice.circleWalletId,
+      transactionType: 'INBOUND',
+      state: 'COMPLETE',
+      amounts: ['1.0000001'],
+    });
+    await deliver(circle.webhook(tx)).expect(200);
+    const row = (await history(alice.id)).find((t) => t.circleTransactionId === tx.id)!;
+    expect(row.amount).toBe('1.0000001');
+
+    // Exact, not rounded: remove it again so the following tests keep 6-decimal balances.
+    await c.db.client.from('transactions').delete().eq('id', row.id);
+    expect(usdc(await details(alice.id))!.available).toBe(before);
+    circle.txs.delete(tx.id);
+  });
+
+  it('one bad Circle transaction does not block the sync of the others; zero amounts are skipped', async () => {
+    const before = usdc(await details(alice.id))!.available;
+    const bad = circle.addTx({
+      walletId: alice.circleWalletId,
+      transactionType: 'INBOUND',
+      state: 'COMPLETE',
+      amounts: ['not-a-number'],
+    });
+    const zero = circle.addTx({
+      walletId: alice.circleWalletId,
+      transactionType: 'INBOUND',
+      state: 'COMPLETE',
+      amounts: ['0'],
+    });
+    circle.addTx({ walletId: alice.circleWalletId, transactionType: 'INBOUND', state: 'COMPLETE', amounts: ['3'] });
+
+    await api.post(`/api/users/${alice.id}/sync`).expect(200);
+
+    expect(Number(usdc(await details(alice.id))!.available)).toBe(Number(before) + 3);
+    const ids = (await history(alice.id)).map((t) => t.circleTransactionId);
+    expect(ids).not.toContain(bad.id);
+    expect(ids).not.toContain(zero.id);
+    circle.txs.delete(bad.id);
+    circle.txs.delete(zero.id);
+  });
+
   it('stored balances always equal a full recomputation from the ledger', async () => {
     // Runs last: every scenario above (deposits, reservations, failures, races) went through the trigger.
     const res = await c.db.client.rpc('balance_drift');
