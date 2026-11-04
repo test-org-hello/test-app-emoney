@@ -36,6 +36,9 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
     dataOf<Transaction[]>(await api.get(`/api/users/${id}/transactions`).expect(200));
   const usdc = (d: UserDetails) => d.balances.find((b) => b.token.symbol === 'USDC');
   const deliver = (wh: SignedWebhook) => api.post('/webhooks/circle').set(wh.headers).send(wh.body);
+  const createUser = async (name: string) => dataOf<User>(await api.post('/api/users').send({ name }).expect(201));
+  /** Postgres error raised by the ledger guards (supabase-js returns it, it does not throw). */
+  const ledgerError = (res: { error: { message: string } | null }) => res.error?.message ?? '';
 
   beforeAll(async () => {
     const config = loadConfig({
@@ -45,6 +48,8 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
       CIRCLE_API_KEY: 'TEST_API_KEY:x:y',
       CIRCLE_ENTITY_SECRET: circle.entitySecret,
       RECONCILE_INTERVAL_MS: '0',
+      // Resubmit right away in tests instead of back-dating rows (the ledger is immutable).
+      RECONCILE_RESUBMIT_AFTER_MS: '0',
     });
     c = buildContainer(config, pino({ level: 'silent' }), { fetchImpl: circle.fetch });
     api = request(c.app);
@@ -208,11 +213,6 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
     expect(w).toMatchObject({ status: 'pending', circleTransactionId: null });
     expect(usdc(await details(alice.id))!.available).toBe('6');
 
-    // pretend it is older than the resubmit threshold
-    await c.db.client
-      .from('transactions')
-      .update({ created_at: new Date(Date.now() - 60_000).toISOString() })
-      .eq('id', w.id);
     await c.reconciler.runOnce();
     await c.reconciler.runOnce(); // second run must not send a second transfer
 
@@ -302,22 +302,19 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
   });
 
   it('incoming amount is recorded exactly as Circle reports it, even beyond token metadata', async () => {
-    const before = usdc(await details(alice.id))!.available;
+    // Own user, so alice keeps 6-decimal balances for the following tests.
+    const carol = await createUser('Carol');
     // USDC metadata says 6 decimals; Circle is the source of truth for what happened on-chain.
     const tx = circle.addTx({
-      walletId: alice.circleWalletId,
+      walletId: carol.circleWalletId,
       transactionType: 'INBOUND',
       state: 'COMPLETE',
       amounts: ['1.0000001'],
     });
     await deliver(circle.webhook(tx)).expect(200);
-    const row = (await history(alice.id)).find((t) => t.circleTransactionId === tx.id)!;
+    const row = (await history(carol.id)).find((t) => t.circleTransactionId === tx.id)!;
     expect(row.amount).toBe('1.0000001');
-
-    // Exact, not rounded: remove it again so the following tests keep 6-decimal balances.
-    await c.db.client.from('transactions').delete().eq('id', row.id);
-    expect(usdc(await details(alice.id))!.available).toBe(before);
-    circle.txs.delete(tx.id);
+    expect(usdc(await details(carol.id))!.available).toBe('1.0000001'); // exact, not rounded
   });
 
   it('one bad Circle transaction does not block the sync of the others; zero amounts are skipped', async () => {
@@ -347,10 +344,11 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
   });
 
   it('history: cursor pages return every transaction exactly once, newest first, ties broken by id', async () => {
+    const pager = await createUser('Pager');
     // 120 rows with the SAME created_at: only the id tie-breaker keeps pages from skipping or repeating rows.
     const createdAt = new Date().toISOString();
     const seeded = Array.from({ length: 120 }, (_, i) => ({
-      user_id: alice.id,
+      user_id: pager.id,
       direction: 'deposit',
       status: 'completed',
       token_id: circle.usdc.id,
@@ -358,52 +356,36 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
       circle_tx_id: `page-${Date.now()}-${i}`,
       created_at: createdAt,
     }));
-    const inserted = await c.db.client.from('transactions').insert(seeded).select('id');
-    expect(inserted.error).toBeNull();
+    expect((await c.db.client.from('transactions').insert(seeded)).error).toBeNull();
 
-    try {
-      const all = await history(alice.id); // first page only (default 50)
-      expect(all).toHaveLength(50);
+    expect(await history(pager.id)).toHaveLength(50); // first page (default limit)
 
-      const seen: Transaction[] = [];
-      let cursor: string | null = null;
-      let pages = 0;
-      do {
-        const url = `/api/users/${alice.id}/transactions?limit=50${cursor ? `&cursor=${cursor}` : ''}`;
-        const page = (await api.get(url).expect(200)).body as PageResponse<Transaction>;
-        seen.push(...page.data);
-        cursor = page.nextCursor;
-        pages++;
-      } while (cursor && pages < 20);
+    const seen: Transaction[] = [];
+    let cursor: string | null = null;
+    let pages = 0;
+    do {
+      const url = `/api/users/${pager.id}/transactions?limit=50${cursor ? `&cursor=${cursor}` : ''}`;
+      const page = (await api.get(url).expect(200)).body as PageResponse<Transaction>;
+      seen.push(...page.data);
+      cursor = page.nextCursor;
+      pages++;
+    } while (cursor && pages < 20);
 
-      const total = await c.db.client
-        .from('transactions')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', alice.id);
-      expect(seen).toHaveLength(total.count!);
-      expect(new Set(seen.map((t) => t.id)).size).toBe(seen.length); // no repeats
-      for (let i = 1; i < seen.length; i++) {
-        const [a, b] = [seen[i - 1]!, seen[i]!];
-        expect(a.createdAt > b.createdAt || (a.createdAt === b.createdAt && a.id > b.id)).toBe(true);
-      }
-
-      // Boundary: limit == remaining rows -> no next page; one less -> there is one.
-      const n = total.count!;
-      const exact = (await api.get(`/api/users/${alice.id}/transactions?limit=${Math.min(n, 200)}`).expect(200))
-        .body as PageResponse<Transaction>;
-      expect(exact.nextCursor).toBe(n <= 200 ? null : expect.any(String));
-      const short = (await api.get(`/api/users/${alice.id}/transactions?limit=${Math.min(n, 200) - 1}`).expect(200))
-        .body as PageResponse<Transaction>;
-      expect(short.nextCursor).toEqual(expect.any(String));
-    } finally {
-      await c.db.client
-        .from('transactions')
-        .delete()
-        .in(
-          'id',
-          (inserted.data ?? []).map((r: { id: string }) => r.id),
-        );
+    expect(pages).toBe(3); // 50 + 50 + 20
+    expect(seen).toHaveLength(120);
+    expect(new Set(seen.map((t) => t.id)).size).toBe(120); // no repeats, no gaps
+    for (let i = 1; i < seen.length; i++) {
+      const [a, b] = [seen[i - 1]!, seen[i]!];
+      expect(a.createdAt > b.createdAt || (a.createdAt === b.createdAt && a.id > b.id)).toBe(true);
     }
+
+    // Boundary: limit == number of rows -> no next page; one less -> there is one.
+    const all = (await api.get(`/api/users/${pager.id}/transactions?limit=120`).expect(200))
+      .body as PageResponse<Transaction>;
+    expect(all.nextCursor).toBeNull();
+    const short = (await api.get(`/api/users/${pager.id}/transactions?limit=119`).expect(200))
+      .body as PageResponse<Transaction>;
+    expect(short.nextCursor).toEqual(expect.any(String));
   });
 
   it('history: invalid limit or cursor is a 400', async () => {
@@ -412,26 +394,57 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
     await api.get(`/api/users/${alice.id}/transactions?cursor=not-a-cursor`).expect(400);
   });
 
+  it('ledger is immutable: facts, final status, deletes and direct balance writes are rejected', async () => {
+    const before = usdc(await details(alice.id))!.available;
+    const completed = (await history(alice.id)).find((t) => t.direction === 'deposit' && t.status === 'completed')!;
+    const tx = () => c.db.client.from('transactions');
+
+    expect(ledgerError(await tx().update({ amount: '1000000' }).eq('id', completed.id))).toMatch(/ledger_immutable/);
+    expect(
+      ledgerError(
+        await tx()
+          .update({ user_id: (await createUser('Mallory')).id })
+          .eq('id', completed.id),
+      ),
+    ).toMatch(/ledger_immutable/);
+    expect(ledgerError(await tx().update({ status: 'pending' }).eq('id', completed.id))).toMatch(/is final/);
+    expect(ledgerError(await tx().update({ tx_hash: '0xforged' }).eq('id', completed.id))).toMatch(/is final/);
+    expect(ledgerError(await tx().delete().eq('id', completed.id))).toMatch(/cannot be deleted/);
+    expect(
+      ledgerError(await c.db.client.from('balances').update({ available: '1000000' }).eq('user_id', alice.id)),
+    ).toMatch(/cannot be written directly/);
+
+    // Nothing changed.
+    expect(usdc(await details(alice.id))!.available).toBe(before);
+    expect((await history(alice.id)).find((t) => t.id === completed.id)).toMatchObject({
+      amount: completed.amount,
+      status: 'completed',
+    });
+  });
+
+  it('deleting a user removes its ledger and balances (the only allowed delete)', async () => {
+    const dave = await createUser('Dave');
+    circle.addTx({ walletId: dave.circleWalletId, transactionType: 'INBOUND', state: 'COMPLETE', amounts: ['5'] });
+    await api.post(`/api/users/${dave.id}/sync`).expect(200);
+    expect(usdc(await details(dave.id))!.available).toBe('5');
+
+    expect((await c.db.client.from('users').delete().eq('id', dave.id)).error).toBeNull();
+    const left = await c.db.client
+      .from('transactions')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', dave.id);
+    const balances = await c.db.client
+      .from('balances')
+      .select('user_id', { count: 'exact', head: true })
+      .eq('user_id', dave.id);
+    expect([left.count, balances.count]).toEqual([0, 0]);
+  });
+
   it('stored balances always equal a full recomputation from the ledger', async () => {
-    // Runs last: every scenario above (deposits, reservations, failures, races) went through the trigger.
+    // Runs last: every scenario above (deposits, reservations, failures, races, rejected tampering) went
+    // through the triggers.
     const res = await c.db.client.rpc('balance_drift');
     expect(res.error).toBeNull();
     expect(res.data as unknown[]).toEqual([]);
-  });
-
-  it('balance survives deleting a transaction (trigger handles DELETE)', async () => {
-    const before = usdc(await details(alice.id))!;
-    const tx = circle.addTx({
-      walletId: alice.circleWalletId,
-      transactionType: 'INBOUND',
-      state: 'COMPLETE',
-      amounts: ['2'],
-    });
-    await api.post(`/api/users/${alice.id}/sync`).expect(200);
-    expect(Number(usdc(await details(alice.id))!.available)).toBe(Number(before.available) + 2);
-
-    await c.db.client.from('transactions').delete().eq('circle_tx_id', tx.id);
-    expect(usdc(await details(alice.id))!.available).toBe(before.available);
-    circle.txs.delete(tx.id);
   });
 });

@@ -28,6 +28,8 @@ export class Reconciler {
     private readonly ledger: LedgerService,
     private readonly withdrawals: WithdrawalService,
     private readonly log: Logger,
+    /** How long a reserved withdrawal may wait for Circle before it is resubmitted. */
+    private readonly resubmitAfterMs = 20_000,
   ) {}
 
   start(intervalMs: number): void {
@@ -80,7 +82,7 @@ export class Reconciler {
   }
 
   private async resubmitStuckWithdrawals() {
-    const stuck = await this.db.listUnsubmittedWithdrawals(new Date(Date.now() - 20_000));
+    const stuck = await this.db.listUnsubmittedWithdrawals(new Date(Date.now() - this.resubmitAfterMs));
     for (const w of stuck) {
       await this.withdrawals.retry(w).catch((e) => this.log.error({ err: e, txId: w.id }, 'withdrawal retry failed'));
     }

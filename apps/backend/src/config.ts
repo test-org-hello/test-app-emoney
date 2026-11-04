@@ -23,6 +23,8 @@ export const configSchema = z.object({
   CIRCLE_WEBHOOK_VERIFY_SIGNATURE: bool.default(true),
 
   RECONCILE_INTERVAL_MS: z.coerce.number().int().min(0).default(30_000),
+  // A reserved withdrawal not accepted by Circle within this time is resubmitted by the reconciler.
+  RECONCILE_RESUBMIT_AFTER_MS: z.coerce.number().int().min(0).default(20_000),
 });
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {

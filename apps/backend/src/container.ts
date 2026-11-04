@@ -24,7 +24,7 @@ export function buildContainer(config: Config, log: Logger, opts: ContainerOptio
   const users = new UserService(db, circle, config, log);
   const ledger = new LedgerService(db, tokens, log);
   const withdrawals = new WithdrawalService(db, circle, users, ledger, log);
-  const reconciler = new Reconciler(db, circle, ledger, withdrawals, log);
+  const reconciler = new Reconciler(db, circle, ledger, withdrawals, log, config.RECONCILE_RESUBMIT_AFTER_MS);
   const verifier = new WebhookSignatureVerifier((keyId) => circle.getNotificationPublicKey(keyId));
 
   const deps: AppDeps = {
