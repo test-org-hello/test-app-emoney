@@ -94,7 +94,8 @@
     "to": "на {address}",
     "statusPending": "В обработке",
     "statusCompleted": "Выполнен",
-    "statusFailed": "Не выполнен"
+    "statusFailed": "Не выполнен",
+    "loadMore": "Показать ещё"
   },
   "errors": {
     "network_error": "Бэкенд недоступен. Проверьте, что он запущен.",

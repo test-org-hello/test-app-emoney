@@ -94,7 +94,8 @@
     "to": "to {address}",
     "statusPending": "Pending",
     "statusCompleted": "Completed",
-    "statusFailed": "Failed"
+    "statusFailed": "Failed",
+    "loadMore": "Load more"
   },
   "errors": {
     "network_error": "Backend is unreachable. Make sure it is running.",

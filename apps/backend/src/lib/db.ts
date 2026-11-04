@@ -1,5 +1,6 @@
 import { createClient, type PostgrestError } from '@supabase/supabase-js';
 import type { Balance, Token, Transaction, User } from '@circle-wallet/shared';
+import type { TransactionCursor } from './cursor.types.js';
 import type {
   ApplyCircleTxInput,
   BalanceApiRow,
@@ -171,14 +172,15 @@ export class Db {
     return rows.map(toBalance).sort((a, b) => a.token.symbol.localeCompare(b.token.symbol));
   }
 
-  async listTransactions(userId: string, limit = 100): Promise<Transaction[]> {
+  /** One page of history, newest first, strictly older than `before` (keyset pagination). */
+  async listTransactions(userId: string, limit: number, before: TransactionCursor | null): Promise<Transaction[]> {
     const rows = check<TransactionApiRow[]>(
-      await this.client
-        .from('transactions_api')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(limit),
+      await this.client.rpc('list_transactions', {
+        p_user_id: userId,
+        p_limit: limit,
+        p_before_created_at: before?.createdAt ?? null,
+        p_before_id: before?.id ?? null,
+      }),
     );
     return rows.map(toTransaction);
   }

@@ -94,3 +94,12 @@ export interface SyncResult {
   /** Number of Circle transactions applied to the ledger. */
   updated: number;
 }
+
+/**
+ * One page of a cursor-paginated list. Pass `nextCursor` as `?cursor=` to get the
+ * next (older) page; `null` means this is the last page.
+ */
+export interface PageResponse<T> {
+  data: T[];
+  nextCursor: string | null;
+}

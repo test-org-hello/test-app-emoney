@@ -1,7 +1,16 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import type { UsersRouterDeps } from './routes.types.js';
-import type { ItemResponse, ListResponse, SyncResult, Transaction, User, UserDetails } from '@circle-wallet/shared';
+import type {
+  ItemResponse,
+  ListResponse,
+  PageResponse,
+  SyncResult,
+  Transaction,
+  User,
+  UserDetails,
+} from '@circle-wallet/shared';
+import { decodeCursor, encodeCursor } from '../lib/cursor.js';
 
 const createUserBody = z.object({ name: z.string().trim().min(1).max(100) });
 const withdrawalBody = z.object({
@@ -10,6 +19,10 @@ const withdrawalBody = z.object({
   amount: z.string().min(1),
 });
 const userIdParam = z.object({ id: z.uuid() });
+const historyQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  cursor: z.string().min(1).max(500).optional(),
+});
 /** Optional; same key = same withdrawal (see WithdrawalService.create). */
 const idempotencyKeyHeader = z
   .string()
@@ -39,10 +52,20 @@ export function usersRouter(deps: UsersRouterDeps): Router {
     res.json(body);
   });
 
+  // Keyset pagination, newest first: ?limit=1..200 (default 50) &cursor=<nextCursor of the previous page>.
   r.get('/:id/transactions', async (req, res) => {
     const { id } = userIdParam.parse(req.params);
+    const { limit, cursor } = historyQuery.parse(req.query);
     await deps.users.get(id);
-    const body: ListResponse<Transaction> = { data: await deps.db.listTransactions(id) };
+
+    // One extra row tells whether another page exists without a COUNT(*).
+    const rows = await deps.db.listTransactions(id, limit + 1, cursor ? decodeCursor(cursor) : null);
+    const data = rows.slice(0, limit);
+    const last = data.at(-1);
+    const body: PageResponse<Transaction> = {
+      data,
+      nextCursor: rows.length > limit && last ? encodeCursor({ createdAt: last.createdAt, id: last.id }) : null,
+    };
     res.json(body);
   });
 

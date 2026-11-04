@@ -3,6 +3,7 @@ import type {
   CreateWithdrawalRequest,
   ItemResponse,
   ListResponse,
+  PageResponse,
   SyncResult,
   Transaction,
   User,
@@ -14,6 +15,8 @@ import { jsonMiddleware } from './middleware/json.middleware';
 import { networkMiddleware } from './middleware/network.middleware';
 
 export { ApiRequestError };
+
+export const HISTORY_PAGE_SIZE = 50;
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000').replace(/\/+$/, '');
 
@@ -40,8 +43,14 @@ export const api = {
   createUser: (name: string) =>
     call<ItemResponse<User>>('/api/users', { method: 'POST', body: JSON.stringify({ name }) }).then((r) => r.data),
   getUser: (id: string) => call<ItemResponse<UserDetails>>(`/api/users/${id}`).then((r) => r.data),
-  listTransactions: (id: string) =>
-    call<ListResponse<Transaction>>(`/api/users/${id}/transactions`).then((r) => r.data),
+  /** One page of history, newest first; pass the previous page's `nextCursor` for the next one. */
+  listTransactions: (id: string, cursor?: string | null, limit = HISTORY_PAGE_SIZE) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (cursor) {
+      params.set('cursor', cursor);
+    }
+    return call<PageResponse<Transaction>>(`/api/users/${id}/transactions?${params.toString()}`);
+  },
   /** Repeating a call with the same `idempotencyKey` returns the first withdrawal instead of creating another. */
   withdraw: (id: string, req: CreateWithdrawalRequest, idempotencyKey: string) =>
     call<ItemResponse<Transaction>>(`/api/users/${id}/withdrawals`, {
@@ -55,5 +64,10 @@ export const api = {
 export const queryKeys = {
   users: ['users'] as const,
   user: (id: string) => ['users', id] as const,
+  /** Prefix of every history query of a user (invalidate this one). */
   transactions: (id: string) => ['users', id, 'transactions'] as const,
+  /** Paginated history table (infinite query). */
+  history: (id: string) => ['users', id, 'transactions', 'history'] as const,
+  /** Newest page only (deposit dialog). */
+  latest: (id: string) => ['users', id, 'transactions', 'latest'] as const,
 };

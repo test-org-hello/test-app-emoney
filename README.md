@@ -184,7 +184,7 @@ TEST_SUPABASE_URL=http://127.0.0.1:54321 TEST_SUPABASE_SERVICE_ROLE_KEY=<service
 | `GET` | `/api/users` | список пользователей |
 | `POST` | `/api/users` | создать пользователя `{ "name": "Alice" }`, создаёт ему кошелёк Circle, отвечает `201` и `User` |
 | `GET` | `/api/users/:id` | пользователь + балансы (`UserDetails`) |
-| `GET` | `/api/users/:id/transactions` | история операций (последние 100, новые сверху) |
+| `GET` | `/api/users/:id/transactions?limit=&cursor=` | история операций, новые сверху, постранично (`limit` 1–200, по умолчанию 50) → `{ data, nextCursor }` |
 | `POST` | `/api/users/:id/withdrawals` | вывод `{ tokenId, destinationAddress, amount }`, заголовок `Idempotency-Key` (рекомендуется) → `201` и `Transaction`; повтор с тем же ключом → `200` |
 | `POST` | `/api/users/:id/sync` | принудительная сверка кошелька пользователя с Circle → `{ updated }` |
 | `HEAD/POST` | `/webhooks/circle` | приём уведомлений Circle |
@@ -195,6 +195,10 @@ TEST_SUPABASE_URL=http://127.0.0.1:54321 TEST_SUPABASE_SERVICE_ROLE_KEY=<service
 - `available` — доступно к выводу: завершённые пополнения минус все не-failed выводы;
 - `incoming` — пополнения, которые Circle уже видит, но которые ещё не `COMPLETE`;
 - `outgoing` — выводы в обработке (уже зарезервированы и вычтены из `available`).
+
+**Пагинация истории — курсорная.** Ответ: `{ "data": [...], "nextCursor": "..." | null }`. Следующая (более старая)
+страница — тот же запрос с `?cursor=<nextCursor>`; `null` — страниц больше нет. Курсор непрозрачный (позиция
+`created_at` + `id` последней операции страницы), неверный курсор или `limit` → `400`.
 
 **Transaction**: `{ id, userId, direction: deposit|withdrawal, status: pending|completed|failed, circleState,
 circleTransactionId, token, amount, sourceAddress, destinationAddress, txHash, explorerUrl, errorReason, createdAt,
@@ -343,4 +347,3 @@ typecheck. Ошибки API переводятся по `error.code` (`insuffici
 - Rate limiting и лимиты на вывод, проверка адреса получателя (screening).
 - Вынести reconciler в отдельный воркер или cron (pg_cron / Supabase Edge Function) с распределённой блокировкой
   на случай нескольких инстансов бэкенда.
-- Пагинация истории.

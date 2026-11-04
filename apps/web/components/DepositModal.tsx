@@ -38,8 +38,9 @@ export function DepositModal({ user, opened, onClose }: DepositModalProps) {
   const tc = useTranslations('common');
 
   const txs = useQuery({
-    queryKey: queryKeys.transactions(user.id),
-    queryFn: () => api.listTransactions(user.id),
+    // Newest page is enough: a deposit that arrives while the dialog is open lands on top.
+    queryKey: queryKeys.latest(user.id),
+    queryFn: () => api.listTransactions(user.id).then((page) => page.data),
     refetchInterval: REFRESH_MS,
     enabled: opened,
   });

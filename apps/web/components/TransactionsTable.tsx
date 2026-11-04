@@ -1,8 +1,21 @@
 'use client';
 
-import { Anchor, Badge, Card, Group, Loader, ScrollArea, Table, Text, Title, Tooltip } from '@mantine/core';
+import {
+  Anchor,
+  Badge,
+  Button,
+  Card,
+  Center,
+  Group,
+  Loader,
+  ScrollArea,
+  Table,
+  Text,
+  Title,
+  Tooltip,
+} from '@mantine/core';
 import { IconArrowDownLeft, IconArrowUpRight } from '@tabler/icons-react';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
 import { useErrorMessage } from '@/lib/errors';
 import type { TransactionStatus } from '@circle-wallet/shared';
@@ -78,11 +91,17 @@ function Row({ tx }: TransactionRowProps) {
 export function TransactionsTable({ userId }: TransactionsTableProps) {
   const t = useTranslations('history');
   const errorMessage = useErrorMessage();
-  const txs = useQuery({
-    queryKey: queryKeys.transactions(userId),
-    queryFn: () => api.listTransactions(userId),
+  // Keyset pages. On each refetch TanStack reloads the loaded pages in order and recomputes
+  // later cursors from fresh data, so new transactions on top never cause gaps.
+  const txs = useInfiniteQuery({
+    queryKey: queryKeys.history(userId),
+    queryFn: ({ pageParam }) => api.listTransactions(userId, pageParam),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor,
     refetchInterval: REFRESH_MS,
   });
+  // Dedupe defensively by id across page boundaries.
+  const rows = txs.data ? [...new Map(txs.data.pages.flatMap((p) => p.data).map((tx) => [tx.id, tx])).values()] : null;
 
   return (
     <Card withBorder padding="lg">
@@ -92,33 +111,42 @@ export function TransactionsTable({ userId }: TransactionsTableProps) {
       </Group>
       {txs.isError ? (
         <Text c="red">{errorMessage(txs.error)}</Text>
-      ) : !txs.data ? (
+      ) : !rows ? (
         <Loader />
-      ) : txs.data.length === 0 ? (
+      ) : rows.length === 0 ? (
         <Text c="dimmed" size="sm">
           {t('empty')}
         </Text>
       ) : (
-        <ScrollArea>
-          <Table striped highlightOnHover miw={800}>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>{t('date')}</Table.Th>
-                <Table.Th>{t('type')}</Table.Th>
-                <Table.Th ta="right">{t('amount')}</Table.Th>
-                <Table.Th>{t('counterparty')}</Table.Th>
-                <Table.Th>{t('status')}</Table.Th>
-                <Table.Th>{t('circle')}</Table.Th>
-                <Table.Th>{t('tx')}</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {txs.data.map((tx) => (
-                <Row key={tx.id} tx={tx} />
-              ))}
-            </Table.Tbody>
-          </Table>
-        </ScrollArea>
+        <>
+          <ScrollArea>
+            <Table striped highlightOnHover miw={800}>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{t('date')}</Table.Th>
+                  <Table.Th>{t('type')}</Table.Th>
+                  <Table.Th ta="right">{t('amount')}</Table.Th>
+                  <Table.Th>{t('counterparty')}</Table.Th>
+                  <Table.Th>{t('status')}</Table.Th>
+                  <Table.Th>{t('circle')}</Table.Th>
+                  <Table.Th>{t('tx')}</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {rows.map((tx) => (
+                  <Row key={tx.id} tx={tx} />
+                ))}
+              </Table.Tbody>
+            </Table>
+          </ScrollArea>
+          {txs.hasNextPage && (
+            <Center mt="md">
+              <Button variant="default" loading={txs.isFetchingNextPage} onClick={() => void txs.fetchNextPage()}>
+                {t('loadMore')}
+              </Button>
+            </Center>
+          )}
+        </>
       )}
     </Card>
   );

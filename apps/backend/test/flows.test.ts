@@ -10,7 +10,7 @@
 import { pino } from 'pino';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { ApiError, ItemResponse, Transaction, User, UserDetails } from '@circle-wallet/shared';
+import type { ApiError, ItemResponse, PageResponse, Transaction, User, UserDetails } from '@circle-wallet/shared';
 import { loadConfig } from '../src/config.js';
 import { buildContainer } from '../src/container.js';
 import { FakeCircle } from './fakeCircle.js';
@@ -344,6 +344,72 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
     expect(ids).not.toContain(zero.id);
     circle.txs.delete(bad.id);
     circle.txs.delete(zero.id);
+  });
+
+  it('history: cursor pages return every transaction exactly once, newest first, ties broken by id', async () => {
+    // 120 rows with the SAME created_at: only the id tie-breaker keeps pages from skipping or repeating rows.
+    const createdAt = new Date().toISOString();
+    const seeded = Array.from({ length: 120 }, (_, i) => ({
+      user_id: alice.id,
+      direction: 'deposit',
+      status: 'completed',
+      token_id: circle.usdc.id,
+      amount: '0.000001',
+      circle_tx_id: `page-${Date.now()}-${i}`,
+      created_at: createdAt,
+    }));
+    const inserted = await c.db.client.from('transactions').insert(seeded).select('id');
+    expect(inserted.error).toBeNull();
+
+    try {
+      const all = await history(alice.id); // first page only (default 50)
+      expect(all).toHaveLength(50);
+
+      const seen: Transaction[] = [];
+      let cursor: string | null = null;
+      let pages = 0;
+      do {
+        const url = `/api/users/${alice.id}/transactions?limit=50${cursor ? `&cursor=${cursor}` : ''}`;
+        const page = (await api.get(url).expect(200)).body as PageResponse<Transaction>;
+        seen.push(...page.data);
+        cursor = page.nextCursor;
+        pages++;
+      } while (cursor && pages < 20);
+
+      const total = await c.db.client
+        .from('transactions')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', alice.id);
+      expect(seen).toHaveLength(total.count!);
+      expect(new Set(seen.map((t) => t.id)).size).toBe(seen.length); // no repeats
+      for (let i = 1; i < seen.length; i++) {
+        const [a, b] = [seen[i - 1]!, seen[i]!];
+        expect(a.createdAt > b.createdAt || (a.createdAt === b.createdAt && a.id > b.id)).toBe(true);
+      }
+
+      // Boundary: limit == remaining rows -> no next page; one less -> there is one.
+      const n = total.count!;
+      const exact = (await api.get(`/api/users/${alice.id}/transactions?limit=${Math.min(n, 200)}`).expect(200))
+        .body as PageResponse<Transaction>;
+      expect(exact.nextCursor).toBe(n <= 200 ? null : expect.any(String));
+      const short = (await api.get(`/api/users/${alice.id}/transactions?limit=${Math.min(n, 200) - 1}`).expect(200))
+        .body as PageResponse<Transaction>;
+      expect(short.nextCursor).toEqual(expect.any(String));
+    } finally {
+      await c.db.client
+        .from('transactions')
+        .delete()
+        .in(
+          'id',
+          (inserted.data ?? []).map((r: { id: string }) => r.id),
+        );
+    }
+  });
+
+  it('history: invalid limit or cursor is a 400', async () => {
+    await api.get(`/api/users/${alice.id}/transactions?limit=0`).expect(400);
+    await api.get(`/api/users/${alice.id}/transactions?limit=201`).expect(400);
+    await api.get(`/api/users/${alice.id}/transactions?cursor=not-a-cursor`).expect(400);
   });
 
   it('stored balances always equal a full recomputation from the ledger', async () => {
