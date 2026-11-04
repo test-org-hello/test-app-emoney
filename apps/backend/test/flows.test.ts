@@ -52,13 +52,20 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
   });
 
   afterAll(async () => {
-    if (!c) return;
+    if (!c) {
+      return;
+    }
     const walletIds = [...circle.wallets.keys()];
-    if (walletIds.length) await c.db.client.from('users').delete().in('circle_wallet_id', walletIds);
+    if (walletIds.length) {
+      await c.db.client.from('users').delete().in('circle_wallet_id', walletIds);
+    }
     await c.db.client.from('tokens').delete().eq('id', circle.usdc.id);
     await c.db.client.from('webhook_events').delete().in('payload->notification->>walletId', walletIds);
-    if (savedCursor) await c.db.setSetting('reconcile_cursor', savedCursor);
-    else await c.db.client.from('app_settings').delete().eq('key', 'reconcile_cursor');
+    if (savedCursor) {
+      await c.db.setSetting('reconcile_cursor', savedCursor);
+    } else {
+      await c.db.client.from('app_settings').delete().eq('key', 'reconcile_cursor');
+    }
   });
 
   it('creates a user with its own Circle wallet / deposit address', async () => {
@@ -215,6 +222,63 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
     expect(after.circleTransactionId).not.toBeNull();
   });
 
+  it('withdrawal: same Idempotency-Key returns the first withdrawal, reserves and sends once', async () => {
+    const before = usdc(await details(alice.id))!.available;
+    const req = { tokenId: circle.usdc.id, destinationAddress: external, amount: '0.5' };
+    const key = `test-${Date.now()}`;
+
+    const first = await api
+      .post(`/api/users/${alice.id}/withdrawals`)
+      .set('Idempotency-Key', key)
+      .send(req)
+      .expect(201);
+    const again = await api
+      .post(`/api/users/${alice.id}/withdrawals`)
+      .set('Idempotency-Key', key)
+      .send(req)
+      .expect(200);
+
+    expect(again.headers['idempotent-replayed']).toBe('true');
+    expect(dataOf<Transaction>(again).id).toBe(dataOf<Transaction>(first).id);
+    expect(circle.transferRequests.filter((r) => r.idempotencyKey === dataOf<Transaction>(first).id)).toHaveLength(1);
+    expect(Number(usdc(await details(alice.id))!.available)).toBe(Number(before) - 0.5);
+  });
+
+  it('withdrawal: parallel requests with one Idempotency-Key create exactly one withdrawal', async () => {
+    const before = usdc(await details(alice.id))!.available;
+    const req = { tokenId: circle.usdc.id, destinationAddress: external, amount: '0.25' };
+    const key = `parallel-${Date.now()}`;
+
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        api.post(`/api/users/${alice.id}/withdrawals`).set('Idempotency-Key', key).send(req),
+      ),
+    );
+
+    expect(results.map((r) => r.status).sort()).toEqual([200, 200, 200, 200, 201]);
+    expect(new Set(results.map((r) => dataOf<Transaction>(r).id)).size).toBe(1);
+    expect(Number(usdc(await details(alice.id))!.available)).toBe(Number(before) - 0.25);
+  });
+
+  it('withdrawal: reusing an Idempotency-Key for a different request is rejected', async () => {
+    const key = `reuse-${Date.now()}`;
+    const base = { tokenId: circle.usdc.id, destinationAddress: external, amount: '0.1' };
+    await api.post(`/api/users/${alice.id}/withdrawals`).set('Idempotency-Key', key).send(base).expect(201);
+
+    const res = await api
+      .post(`/api/users/${alice.id}/withdrawals`)
+      .set('Idempotency-Key', key)
+      .send({ ...base, amount: '0.2' })
+      .expect(422);
+    expect(errorOf(res).code).toBe('idempotency_key_reused');
+
+    await api
+      .post(`/api/users/${alice.id}/withdrawals`)
+      .set('Idempotency-Key', 'bad key with spaces')
+      .send(base)
+      .expect(400);
+  });
+
   it('withdrawal: concurrent requests cannot overdraw', async () => {
     const before = Number(usdc(await details(alice.id))!.available); // 6
     const results = await Promise.all(
@@ -235,5 +299,28 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
     circle.addTx({ walletId: alice.circleWalletId, transactionType: 'INBOUND', state: 'COMPLETE', amounts: ['4'] });
     await api.post(`/api/users/${alice.id}/sync`).expect(200);
     expect(Number(usdc(await details(alice.id))!.available)).toBe(Number(before) + 4);
+  });
+
+  it('stored balances always equal a full recomputation from the ledger', async () => {
+    // Runs last: every scenario above (deposits, reservations, failures, races) went through the trigger.
+    const res = await c.db.client.rpc('balance_drift');
+    expect(res.error).toBeNull();
+    expect(res.data as unknown[]).toEqual([]);
+  });
+
+  it('balance survives deleting a transaction (trigger handles DELETE)', async () => {
+    const before = usdc(await details(alice.id))!;
+    const tx = circle.addTx({
+      walletId: alice.circleWalletId,
+      transactionType: 'INBOUND',
+      state: 'COMPLETE',
+      amounts: ['2'],
+    });
+    await api.post(`/api/users/${alice.id}/sync`).expect(200);
+    expect(Number(usdc(await details(alice.id))!.available)).toBe(Number(before.available) + 2);
+
+    await c.db.client.from('transactions').delete().eq('circle_tx_id', tx.id);
+    expect(usdc(await details(alice.id))!.available).toBe(before.available);
+    circle.txs.delete(tx.id);
   });
 });

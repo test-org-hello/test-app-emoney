@@ -10,6 +10,14 @@ const withdrawalBody = z.object({
   amount: z.string().min(1),
 });
 const userIdParam = z.object({ id: z.uuid() });
+/** Optional; same key = same withdrawal (see WithdrawalService.create). */
+const idempotencyKeyHeader = z
+  .string()
+  .trim()
+  .min(1)
+  .max(255)
+  .regex(/^[A-Za-z0-9_.:-]+$/, 'Idempotency-Key may contain letters, digits and _ . : -')
+  .optional();
 
 export function usersRouter(deps: UsersRouterDeps): Router {
   const r = Router();
@@ -41,8 +49,15 @@ export function usersRouter(deps: UsersRouterDeps): Router {
   r.post('/:id/withdrawals', async (req, res) => {
     const { id } = userIdParam.parse(req.params);
     const input = withdrawalBody.parse(req.body);
-    const body: ItemResponse<Transaction> = { data: await deps.withdrawals.create(id, input) };
-    res.status(201).json(body);
+    const idempotencyKey = idempotencyKeyHeader.parse(req.header('idempotency-key')) ?? null;
+
+    const { replayed, tx } = await deps.withdrawals.create(id, input, idempotencyKey);
+    const body: ItemResponse<Transaction> = { data: tx };
+    // A replay returns the original result: 200 instead of 201, flagged in a header.
+    if (replayed) {
+      res.set('Idempotent-Replayed', 'true');
+    }
+    res.status(replayed ? 200 : 201).json(body);
   });
 
   r.post('/:id/sync', async (req, res) => {

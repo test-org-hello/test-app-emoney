@@ -3,7 +3,7 @@ import type { CircleErrorBody } from '../circle/circle.types.js';
 import { CircleApiError, type CircleClient } from '../circle/client.js';
 import { EVM_ADDRESS_RE, parseAmount } from '../lib/amount.js';
 import { DbError, type Db } from '../lib/db.js';
-import type { PendingWithdrawal } from '../lib/db.types.js';
+import type { CreateWithdrawalResult, PendingWithdrawal } from '../lib/db.types.js';
 import { badRequest, HttpError } from '../lib/errors.js';
 import type { Logger } from '../lib/logger.types.js';
 import type { LedgerService } from './ledger.js';
@@ -29,36 +29,72 @@ export class WithdrawalService {
     private readonly log: Logger,
   ) {}
 
-  async create(userId: string, req: CreateWithdrawalRequest): Promise<Transaction> {
+  /**
+   * `idempotencyKey` (Idempotency-Key header): repeating a request with the same
+   * key returns the withdrawal created the first time (`replayed: true`) instead
+   * of reserving funds and sending a second transfer.
+   */
+  async create(
+    userId: string,
+    req: CreateWithdrawalRequest,
+    idempotencyKey: string | null = null,
+  ): Promise<CreateWithdrawalResult> {
     const user = await this.users.get(userId);
 
     const token = await this.db.getToken(req.tokenId);
-    if (!token) throw badRequest('Unknown token: deposit it first');
+    if (!token) {
+      throw badRequest('Unknown token: deposit it first');
+    }
 
     const amount = parseAmount(req.amount, token.decimals);
-    if (!amount.ok) throw badRequest(amount.reason);
+    if (!amount.ok) {
+      throw badRequest(amount.reason);
+    }
 
     const destination = req.destinationAddress.trim();
-    if (!EVM_ADDRESS_RE.test(destination)) throw badRequest('Destination must be an EVM address (0x + 40 hex chars)');
+    if (!EVM_ADDRESS_RE.test(destination)) {
+      throw badRequest('Destination must be an EVM address (0x + 40 hex chars)');
+    }
     if (destination.toLowerCase() === user.address.toLowerCase()) {
       throw badRequest('Destination is the user’s own deposit address');
     }
 
-    let tx: Transaction;
+    let created: CreateWithdrawalResult;
     try {
-      tx = await this.db.createWithdrawal({ userId, tokenId: token.id, amount: amount.value, destination });
+      created = await this.db.createWithdrawal({
+        userId,
+        tokenId: token.id,
+        amount: amount.value,
+        destination,
+        idempotencyKey,
+      });
     } catch (e) {
       if (e instanceof DbError && e.message === 'insufficient_funds') {
         throw new HttpError(422, 'insufficient_funds', 'Amount exceeds available balance');
       }
-      if (e instanceof DbError && e.message === 'user_not_found')
+      if (e instanceof DbError && e.message === 'idempotency_key_reused') {
+        throw new HttpError(
+          422,
+          'idempotency_key_reused',
+          'Idempotency-Key was already used for a different withdrawal (token, amount or destination)',
+        );
+      }
+      if (e instanceof DbError && e.message === 'user_not_found') {
         throw new HttpError(404, 'not_found', 'User not found');
+      }
       throw e;
+    }
+
+    const { tx } = created;
+    if (created.replayed) {
+      // Already reserved (and submitted, or being retried by the reconciler) by the first request.
+      this.log.info({ txId: tx.id, userId, idempotencyKey }, 'withdrawal request replayed');
+      return created;
     }
 
     this.log.info({ txId: tx.id, userId, amount: amount.value, token: token.symbol }, 'withdrawal reserved');
 
-    return (
+    const submitted =
       (await this.submit({
         id: tx.id,
         userId,
@@ -68,8 +104,8 @@ export class WithdrawalService {
         destination,
         submitAttempts: 0,
         createdAt: tx.createdAt,
-      })) ?? tx
-    );
+      })) ?? tx;
+    return { replayed: false, tx: submitted };
   }
 
   /** Sends (or re-sends) a reserved withdrawal to Circle. Safe to call repeatedly. */

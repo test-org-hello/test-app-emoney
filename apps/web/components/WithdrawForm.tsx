@@ -8,8 +8,8 @@ import { useTranslations } from 'next-intl';
 import { useState, type FormEvent } from 'react';
 import { useErrorMessage } from '@/lib/errors';
 import type { CreateWithdrawalRequest } from '@circle-wallet/shared';
-import { api, queryKeys } from '@/lib/api';
-import type { WithdrawFormProps } from './WithdrawForm.types';
+import { api, ApiRequestError, queryKeys } from '@/lib/api';
+import type { WithdrawAttempt, WithdrawFormProps } from './WithdrawForm.types';
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const AMOUNT_RE = /^\d+(\.\d+)?$/;
@@ -35,6 +35,9 @@ export function WithdrawForm({ userId }: WithdrawFormProps) {
   const [pickedTokenId, setTokenId] = useState<string | null>(null);
   const [destination, setDestination] = useState('');
   const [amount, setAmount] = useState('');
+  // Same intent re-submitted (double click, retry after a network error) reuses the key,
+  // so the backend returns the first withdrawal instead of creating a second one.
+  const [attempt, setAttempt] = useState<WithdrawAttempt | null>(null);
 
   // Derived, not synced in an effect: the picked token if it still has funds, otherwise the first one.
   const balance = balances.find((b) => b.token.id === pickedTokenId) ?? balances[0];
@@ -42,19 +45,29 @@ export function WithdrawForm({ userId }: WithdrawFormProps) {
   const decimals = balance?.token.decimals ?? 6;
 
   const amountError = (() => {
-    if (!amount) return null;
-    if (!AMOUNT_RE.test(amount)) return t('errorNumber');
-    if ((amount.split('.')[1] ?? '').length > decimals) return t('errorDecimals', { decimals });
-    if (cmpDecimal(amount, '0') <= 0) return t('errorPositive');
-    if (balance && cmpDecimal(amount, balance.available) > 0)
+    if (!amount) {
+      return null;
+    }
+    if (!AMOUNT_RE.test(amount)) {
+      return t('errorNumber');
+    }
+    if ((amount.split('.')[1] ?? '').length > decimals) {
+      return t('errorDecimals', { decimals });
+    }
+    if (cmpDecimal(amount, '0') <= 0) {
+      return t('errorPositive');
+    }
+    if (balance && cmpDecimal(amount, balance.available) > 0) {
       return t('errorExceeds', { available: balance.available });
+    }
     return null;
   })();
   const addressError = destination && !ADDRESS_RE.test(destination.trim()) ? t('errorAddress') : null;
 
   const withdraw = useMutation({
-    mutationFn: (req: CreateWithdrawalRequest) => api.withdraw(userId, req),
+    mutationFn: ({ req, key }: { req: CreateWithdrawalRequest; key: string }) => api.withdraw(userId, req, key),
     onSuccess: async (tx) => {
+      setAttempt(null); // done: the next submit is a new withdrawal
       await Promise.all([
         qc.invalidateQueries({ queryKey: queryKeys.user(userId) }),
         qc.invalidateQueries({ queryKey: queryKeys.transactions(userId) }),
@@ -70,12 +83,24 @@ export function WithdrawForm({ userId }: WithdrawFormProps) {
             },
       );
     },
-    onError: (e) => notifications.show({ color: 'red', title: t('failed'), message: errorMessage(e) }),
+    onError: (e) => {
+      if (e instanceof ApiRequestError && e.code === 'idempotency_key_reused') {
+        setAttempt(null);
+      }
+      notifications.show({ color: 'red', title: t('failed'), message: errorMessage(e) });
+    },
   });
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (tokenId) withdraw.mutate({ tokenId, destinationAddress: destination.trim(), amount });
+    if (!tokenId) {
+      return;
+    }
+    const req = { tokenId, destinationAddress: destination.trim(), amount };
+    const intent = `${req.tokenId}|${req.destinationAddress.toLowerCase()}|${req.amount}`;
+    const current = attempt?.intent === intent ? attempt : { intent, key: crypto.randomUUID() };
+    setAttempt(current);
+    withdraw.mutate({ req, key: current.key });
   };
 
   const canSubmit = !!tokenId && !!amount && !!destination && !amountError && !addressError;

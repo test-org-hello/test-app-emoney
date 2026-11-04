@@ -102,6 +102,7 @@
     "insufficient_funds": "Amount exceeds the available balance",
     "validation_error": "Invalid data",
     "circle_error": "Circle is unavailable or returned an error",
-    "internal_error": "Internal server error"
+    "internal_error": "Internal server error",
+    "idempotency_key_reused": "This withdrawal request was already sent with different parameters. Submit again."
   }
 }

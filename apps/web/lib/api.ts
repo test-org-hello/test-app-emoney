@@ -42,9 +42,11 @@ export const api = {
   getUser: (id: string) => call<ItemResponse<UserDetails>>(`/api/users/${id}`).then((r) => r.data),
   listTransactions: (id: string) =>
     call<ListResponse<Transaction>>(`/api/users/${id}/transactions`).then((r) => r.data),
-  withdraw: (id: string, req: CreateWithdrawalRequest) =>
+  /** Repeating a call with the same `idempotencyKey` returns the first withdrawal instead of creating another. */
+  withdraw: (id: string, req: CreateWithdrawalRequest, idempotencyKey: string) =>
     call<ItemResponse<Transaction>>(`/api/users/${id}/withdrawals`, {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
       body: JSON.stringify(req),
     }).then((r) => r.data),
   sync: (id: string) => call<ItemResponse<SyncResult>>(`/api/users/${id}/sync`, { method: 'POST' }).then((r) => r.data),

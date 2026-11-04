@@ -5,6 +5,8 @@ import type {
   BalanceApiRow,
   DbClient,
   CreateWithdrawalInput,
+  CreateWithdrawalResult,
+  CreateWithdrawalRow,
   InsertUserInput,
   PendingCircleTxRow,
   PendingWithdrawal,
@@ -26,7 +28,9 @@ export class DbError extends Error {
 
 /** Throws on a Supabase error; otherwise returns `data` as the row type the caller expects. */
 function check<T = unknown>(res: PostgrestResult): T {
-  if (res.error) throw new DbError(res.error);
+  if (res.error) {
+    throw new DbError(res.error);
+  }
   return res.data as T;
 }
 
@@ -181,16 +185,18 @@ export class Db {
 
   // -- ledger writes (all through SQL functions, see migration) --------------
 
-  async createWithdrawal(p: CreateWithdrawalInput): Promise<Transaction> {
-    const rows = check<TransactionApiRow[]>(
+  async createWithdrawal(p: CreateWithdrawalInput): Promise<CreateWithdrawalResult> {
+    const rows = check<CreateWithdrawalRow[]>(
       await this.client.rpc('create_withdrawal', {
         p_user_id: p.userId,
         p_token_id: p.tokenId,
         p_amount: p.amount,
         p_destination: p.destination,
+        p_idempotency_key: p.idempotencyKey,
       }),
     );
-    return toTransaction(rows[0]!);
+    const row = rows[0]!;
+    return { replayed: row.replayed, tx: toTransaction(row.tx) };
   }
 
   async applyCircleTransaction(i: ApplyCircleTxInput): Promise<Transaction | null> {

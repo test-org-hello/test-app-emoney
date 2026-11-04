@@ -83,6 +83,20 @@ export interface CreateWithdrawalInput {
   tokenId: string;
   amount: string;
   destination: string;
+  /** Client Idempotency-Key; null = no deduplication. */
+  idempotencyKey: string | null;
+}
+
+/** Row returned by the create_withdrawal SQL function. */
+export interface CreateWithdrawalRow {
+  replayed: boolean;
+  tx: TransactionApiRow;
+}
+
+export interface CreateWithdrawalResult {
+  /** true: the key was used before, `tx` is the withdrawal created back then. */
+  replayed: boolean;
+  tx: Transaction;
 }
 
 export interface ApplyCircleTxInput {
