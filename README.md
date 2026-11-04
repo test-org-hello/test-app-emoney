@@ -2,173 +2,288 @@
 
 Небольшой fullstack-криптокошелёк на **Circle Developer-Controlled Wallets** в тестовой сети **BASE-SEPOLIA**.
 Пользователь пополняет кошелёк тестовыми токенами, выводит их на любой адрес и видит баланс и историю операций.
+Circle выполняет переводы и сообщает о них вебхуками, приложение само ведёт балансы и историю.
 
-```
-apps/
-  backend/   Express + TypeScript: работа с Circle API, приём вебхуков, учёт балансов
-  web/       Next.js (App Router) + Mantine + TanStack Query: интерфейс
-packages/
-  shared/    типы API-контракта, общие для backend и web
-supabase/
-  migrations/  схема БД (таблицы, представления, SQL-функции)
-  config.toml  конфиг локального Supabase
-```
+- **Бэкенд** — Express + TypeScript (`apps/backend`): работа с Circle API, приём вебхуков, учёт балансов.
+- **База** — Supabase / Postgres (`supabase/migrations`): пользователи, балансы, история операций.
+- **Фронтенд** — Next.js + Mantine (`apps/web`): интерфейс, RU/EN.
 
-Монорепо на **pnpm workspaces**.
+## Содержание
 
-Качество кода: ESLint 9 (flat config, `eslint.config.mjs`) и Prettier (`.prettierrc.json`), запуск — `pnpm lint`,
-`pnpm format`. ESLint 9, а не 10: `eslint-config-next` 16 тянет `eslint-plugin-react`, который пока поддерживает
-только ESLint ≤ 9.
-
-Соглашения по файлам:
-- типы — только в файлах `*.types.ts` рядом с модулем (`circle/circle.types.ts`, `lib/db.types.ts`,
-  `components/WalletCard.types.ts`, …); контракт API — `packages/shared/src/api.types.ts`;
-- middleware — в `*.middleware.ts`:
-  - бэкенд, `apps/backend/src/middleware/`: `error` (404 и маппинг ошибок), `request-logger`, `cors`;
-  - фронт, `apps/web/lib/middleware/`: цепочка для запросов к API — `network` (бэкенд недоступен), `json`
-    (Content-Type).
-- переводы интерфейса — `apps/web/messages/{ru,en}.json`, настройка i18n — `apps/web/i18n/`.
+- [Требования](#требования)
+- [Быстрый старт](#быстрый-старт)
+  - [Вариант А: без аккаунта Circle (mock)](#вариант-а-без-аккаунта-circle-mock)
+  - [Вариант Б: с настоящим Circle (testnet)](#вариант-б-с-настоящим-circle-testnet)
+- [Как пользоваться](#как-пользоваться)
+- [Тестирование](#тестирование)
+- [Настройка подробно](#настройка-подробно)
+- [Скрипты](#скрипты)
+- [Структура проекта](#структура-проекта)
+- [API бэкенда](#api-бэкенда)
+- [Ключевые решения](#ключевые-решения)
 
 ---
 
-## Быстрый старт (локально)
+## Требования
 
-Нужно: Node.js ≥ 20 (проверено на 24), pnpm ≥ 10, Docker (для локального Supabase).
+| Что | Версия | Зачем |
+|---|---|---|
+| Node.js | ≥ 20 (проверено на 24) | бэкенд, фронтенд, скрипты |
+| pnpm | ≥ 10 (проверено на 11) | монорепо на pnpm workspaces: `npm i -g pnpm` или `corepack enable` |
+| Docker | Docker Desktop или аналог, запущен | локальный Supabase (`pnpm db:start`) |
+| Аккаунт Circle | бесплатный, testnet | только для варианта Б — с настоящими кошельками |
+| ngrok или cloudflared | любой | только для вебхуков настоящего Circle (вариант Б) |
+
+Supabase CLI отдельно ставить не нужно: он устанавливается как зависимость проекта (`pnpm exec supabase`).
+
+---
+
+## Быстрый старт
+
+Общие шаги для обоих вариантов:
 
 ```bash
 pnpm install
-pnpm db:start                                   # локальный Supabase + применение миграций
-cp apps/backend/.env.example apps/backend/.env  # заполнить, см. ниже
-cp apps/web/.env.example apps/web/.env.local
-pnpm dev                                        # backend :4000 + web :3000
+pnpm db:start                                     # Supabase в Docker + все миграции из supabase/migrations
+cp apps/backend/.env.example apps/backend/.env
+cp apps/web/.env.example apps/web/.env.local      # менять ничего не нужно
 ```
 
-Открыть http://localhost:3000. Аутентификации нет (по ТЗ): пользователь создаётся и выбирается из списка.
-Как пользоваться — раздел [«Как пользоваться»](#как-пользоваться).
+Шаблон `apps/backend/.env` уже настроен на локальный Supabase (стандартный демо-ключ Supabase CLI, одинаковый для
+всех локальных установок), править в нём для базы ничего не нужно. Осталось указать Circle — вариант А или Б.
 
-### 1. Supabase
+### Вариант А: без аккаунта Circle (mock)
 
-**Вариант А — локально (рекомендуется для разработки).** `pnpm db:start` поднимает Postgres + PostgREST в Docker и
-применяет `supabase/migrations`. Команда печатает `API_URL` и `service_role key`. Их нужно указать в
-`SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY`. Пересоздать базу: `pnpm db:reset`.
+Самый быстрый способ увидеть все сценарии. Локальный mock реализует используемые эндпоинты Circle, подписывает
+вебхуки так же, как Circle, и сам переводит статусы переводов: `INITIATED → QUEUED → SENT → COMPLETE`.
 
-**Вариант Б — облачный проект.** Создайте проект на supabase.com, затем:
+1. Запустите mock (отдельный терминал), он работает на `:4010`:
+   ```bash
+   pnpm --filter @circle-wallet/backend circle:fake
+   ```
+2. В `apps/backend/.env` укажите (эти строки есть в шаблоне закомментированными, секрет mock печатает при старте):
+   ```
+   CIRCLE_BASE_URL=http://localhost:4010
+   CIRCLE_API_KEY=TEST_API_KEY:fake:fake
+   CIRCLE_ENTITY_SECRET=abababababababababababababababababababababababababababababababab
+   ```
+3. Запустите приложение:
+   ```bash
+   pnpm dev                                       # backend :4000 + web :3000
+   ```
+4. Откройте http://localhost:3000, создайте пользователя («Новый») и скопируйте его адрес.
+5. Пополнение (вместо фаусета):
+   ```bash
+   curl -X POST localhost:4010/_fake/deposit -H 'content-type: application/json' \
+        -d '{"address":"0x<адрес пользователя>","amount":"25"}'
+   ```
+   В истории появится «В обработке», через ~3 секунды — «Выполнен», 25 USDC станут доступны.
+6. Вывод — форма «Вывод» на любой адрес `0x…`. Сумма **`13.13`** в mock заканчивается статусом `FAILED`:
+   так видно неуспешный вывод и возврат средств.
 
-```bash
-pnpm exec supabase link --project-ref <ref>
-pnpm db:push                       # применить миграции
-```
+> Пользователи, созданные с mock, получают фейковые кошельки. Перед переходом на настоящий Circle пересоздайте
+> базу: `pnpm db:reset`.
 
-Также можно выполнить `supabase/migrations/*.sql` в SQL Editor.
-`SUPABASE_URL` и `service_role` key находятся в Project Settings → API.
+### Вариант Б: с настоящим Circle (testnet)
 
-Бэкенд ходит в базу только с ключом `service_role`. RLS включён на всех таблицах, политик нет: anon/authenticated
-доступа не имеют, фронтенд работает только через API бэкенда.
-
-### 2. Circle
-
-1. Зарегистрируйтесь на https://console.circle.com (бесплатно, testnet).
-2. **API key**: Keys → Create a key → Standard key (`TEST_API_KEY:...`) → `CIRCLE_API_KEY`.
-   `CIRCLE_BASE_URL=https://api.circle.com`.
-3. **Entity Secret.** Сгенерируйте и зарегистрируйте его скриптом:
+1. **API key.** Зарегистрируйтесь на https://console.circle.com (бесплатно), режим Testnet → Keys → Create a key →
+   Standard key. В `apps/backend/.env`:
+   ```
+   CIRCLE_BASE_URL=https://api.circle.com
+   CIRCLE_API_KEY=TEST_API_KEY:...
+   ```
+2. **Entity Secret** — секрет для подписи операций с кошельками. Сгенерировать и зарегистрировать:
    ```bash
    pnpm --filter @circle-wallet/backend circle:entity-secret
    ```
-   Скрипт создаёт 32-байтовый секрет (или берёт уже заданный `CIRCLE_ENTITY_SECRET`), шифрует его публичным ключом
-   Circle и регистрирует. Recovery file он сохраняет в `apps/backend/recovery_file_*.dat` (этот файл в .gitignore).
-   Напечатанное значение пропишите в `CIRCLE_ENTITY_SECRET`.
-4. **Wallet set** создаётся автоматически при создании первого пользователя, его id сохраняется в таблице
-   `app_settings`. Можно указать готовый через `CIRCLE_WALLET_SET_ID`.
-5. **Вебхуки.** Circle нужен публичный HTTPS-адрес. Для локальной разработки подойдёт туннель:
+   Скрипт напечатает строку `CIRCLE_ENTITY_SECRET=<64 hex-символа>` — вставьте её в `apps/backend/.env`.
+   Recovery file сохраняется в `apps/backend/recovery_file_*.dat` (в .gitignore) — это **не** секрет, а файл
+   для его сброса. Сохраните и то и другое: секрет регистрируется один раз.
+3. **Запуск:**
    ```bash
-   cloudflared tunnel --url http://localhost:4000      # или: ngrok http 4000
-   pnpm --filter @circle-wallet/backend circle:subscribe-webhook https://<tunnel-host>/webhooks/circle
+   pnpm dev
    ```
-   Другой способ — Console → Webhooks → Add subscription с тем же URL. Circle проверяет URL запросом `HEAD`.
-   Бэкенд отвечает на него `200`.
-6. **Тестовые токены**: https://faucet.circle.com → USDC → Base Sepolia → адрес пользователя из интерфейса.
+   Откройте http://localhost:3000 и создайте пользователя — у него появится настоящий адрес в Base Sepolia.
+4. **Вебхуки** (необязательно, но без них обновления приходят только опросом раз в 30 секунд). Circle нужен
+   публичный HTTPS-адрес бэкенда:
+   ```bash
+   ngrok http 4000                                # или: cloudflared tunnel --url http://localhost:4000
+   pnpm --filter @circle-wallet/backend circle:subscribe-webhook https://<адрес туннеля>/webhooks/circle
+   ```
+   Адрес туннеля меняется при перезапуске (кроме постоянного домена ngrok) — тогда подписку нужно создать заново.
+5. **Тестовые токены** — кнопка «Пополнить» в карточке пользователя → https://faucet.circle.com → **USDC** и сеть
+   **Base Sepolia** → адрес пользователя. Проверьте сеть: фаусет может предложить другую (например, Arc Testnet),
+   и тогда токены уйдут туда. Лимит фаусета — один запрос в 2 часа на адрес и токен.
 
-> Без вебхуков приложение тоже работает: фоновый reconciler опрашивает Circle каждые `RECONCILE_INTERVAL_MS`,
-> кроме того, есть кнопка «Синхронизировать с Circle». Вебхуки дают обновление почти сразу, опрос служит страховкой.
+---
 
-### 3. Без аккаунта Circle (mock)
+## Как пользоваться
 
-Чтобы посмотреть весь поток без регистрации, используйте локальный mock Circle API. Он реализует используемые
-эндпоинты, подписывает вебхуки ECDSA-ключом так же, как Circle, и сам двигает статусы переводов:
+1. **Создать пользователя** — кнопка «Новый» справа вверху → имя → «Создать». Бэкенд создаёт пользователю
+   отдельный кошелёк Circle; его адрес — адрес для пополнения. Переключение — выпадающий список рядом.
+2. **Пополнить** — кнопка «Пополнить»: адрес, QR-код, ссылка на фаусет. Пополнение появляется в истории со статусом
+   «В обработке» и колонкой «Поступает» в балансе, а после `COMPLETE` в Circle (на Base Sepolia — несколько минут)
+   становится «Выполнен» и переходит в «Доступно».
+3. **Вывести** — форма «Вывод»: адрес получателя (`0x…`), сумма (MAX — весь доступный баланс) → «Вывести». Сумма
+   сразу резервируется («Выводится»), статус доходит до «Выполнен» или «Не выполнен» (тогда средства
+   возвращаются). Для проверки удобно вывести на адрес второго своего пользователя — у него появится пополнение.
+4. **Баланс и история** обновляются сами: вебхуками Circle, без них — опросом раз в 30 секунд или кнопкой
+   «Синхронизировать». История постраничная — «Показать ещё» внизу.
+5. **Язык** — переключатель RU / EN справа вверху.
+
+---
+
+## Тестирование
+
+### Автотесты
+
+| Команда | Что нужно | Что запускается |
+|---|---|---|
+| `pnpm test` | ничего | unit-тесты: разбор сумм, подпись вебхуков (интеграционные пропускаются) |
+| `pnpm test:integration` | запущенный локальный Supabase (`pnpm db:start`) | все тесты: unit + интеграционные |
+
+**Интеграционные тесты** гоняют весь HTTP-стек бэкенда против настоящего Postgres; Circle подменён фейком в
+памяти (`apps/backend/test/fakeCircle.ts`), поэтому ни аккаунт Circle, ни сеть не нужны. Покрыто:
+
+- создание пользователя с кошельком; проверка подписи вебхуков;
+- пополнение: `pending → completed`, повторные и запоздавшие вебхуки, догоняющая синхронизация без вебхука;
+- вывод: резерв, завершение, неуспех с возвратом средств, отказ Circle, повтор после сбоя Circle;
+- 5 параллельных выводов не уводят баланс в минус;
+- `Idempotency-Key`: повтор, 5 параллельных повторов, ключ с другими параметрами;
+- точные суммы: входящие записываются как есть, «битая» транзакция не останавливает сверку;
+- пагинация истории: 120 операций с одинаковым временем без пропусков и повторов;
+- после всех сценариев сохранённые балансы совпадают с пересчётом по истории (`balance_drift()`).
+
+`pnpm test:integration` сам берёт адрес и ключ из `supabase status`. Тесты пишут в ту же локальную базу, что и
+приложение, и удаляют всё, что создали.
+
+### Проверки качества
 
 ```bash
-pnpm --filter @circle-wallet/backend circle:fake   # :4010, печатает CIRCLE_ENTITY_SECRET
-# в apps/backend/.env: CIRCLE_BASE_URL=http://localhost:4010 и напечатанный CIRCLE_ENTITY_SECRET
-pnpm dev
-# пополнение:
-curl -X POST localhost:4010/_fake/deposit -H 'content-type: application/json' \
-     -d '{"address":"0x<адрес пользователя>","amount":"25"}'
+pnpm format:check   # Prettier
+pnpm lint           # ESLint (typescript-eslint с проверкой типов, Next.js, правила хуков React)
+pnpm typecheck      # TypeScript во всех пакетах
+pnpm build          # сборка бэкенда и фронтенда
+pnpm check          # format:check + lint + typecheck + test одной командой
 ```
 
-Вывод суммы `13.13` в mock заканчивается статусом `FAILED`. Так можно посмотреть путь неуспешного вывода.
+### Ручная проверка сценариев из ТЗ
 
-### Как пользоваться
+| Сценарий | Как проверить |
+|---|---|
+| Пользователь | «Новый» → имя → в списке появился пользователь со своим адресом |
+| Пополнение | mock: `curl … /_fake/deposit`; Circle: фаусет → в истории «В обработке» → «Выполнен» |
+| Вывод | форма «Вывод» → в истории «В обработке» → «Выполнен»; mock, сумма `13.13` → «Не выполнен» и возврат |
+| Баланс и история | «Доступно» / «Поступает» / «Выводится» меняются вместе со статусами; «Показать ещё» в истории |
+| Двойной вывод | отправить один и тот же вывод дважды с одним `Idempotency-Key` (команда ниже) — второй ответ `200` с заголовком `Idempotent-Replayed: true`, вывод один |
 
-1. **Создать пользователя** — кнопка «Новый» справа вверху → имя → «Создать». Бэкенд создаёт этому
-   пользователю отдельный кошелёк Circle в BASE-SEPOLIA; его адрес — адрес для пополнения. Переключаться между
-   пользователями — выпадающий список рядом.
-2. **Пополнить** — кнопка «Пополнить» в карточке пользователя: адрес, QR-код и ссылка на
-   [faucet.circle.com](https://faucet.circle.com). На фаусете выберите **USDC** и сеть **Base Sepolia**
-   (не Arc Testnet и не другую — иначе токены уйдут в другую сеть), вставьте адрес. Пополнение появится в истории
-   со статусом «В обработке», а после `COMPLETE` в Circle (обычно несколько минут) — «Выполнен», и сумма станет
-   доступна.
-3. **Вывести** — форма «Вывод»: адрес получателя (`0x…`), сумма (кнопка MAX — весь доступный баланс) → «Вывести».
-   Сумма сразу резервируется («Выводится»), статус идёт до «Выполнен» или «Не выполнен» (тогда средства
-   возвращаются). Для проверки можно вывести на адрес другого своего пользователя — у него появится пополнение.
-4. **История и баланс** обновляются автоматически: через вебхуки Circle, а без них — опросом раз в 30 секунд
-   (или кнопкой «Синхронизировать»).
+```bash
+curl -i -X POST localhost:4000/api/users/<id>/withdrawals -H 'content-type: application/json' \
+  -H 'Idempotency-Key: demo-1' -d '{"tokenId":"<token id>","destinationAddress":"0x…","amount":"1"}'
+```
+
+(`<token id>` — `balances[].token.id` из `GET /api/users/<id>`.)
+
+---
+
+## Настройка подробно
+
+### Supabase
+
+- **Локально (по умолчанию):** `pnpm db:start` / `pnpm db:stop`; `pnpm db:reset` пересоздаёт базу (данные
+  удаляются). Новые миграции на существующую базу: `pnpm exec supabase migration up --local`.
+- **Облачный проект:** создайте проект на supabase.com, затем
+  ```bash
+  pnpm exec supabase link --project-ref <ref>
+  pnpm db:push
+  ```
+  `SUPABASE_URL` и `service_role` key — в Project Settings → API.
+
+Бэкенд ходит в базу только с ключом `service_role`. RLS включён на всех таблицах без политик: у anon/authenticated
+доступа нет, фронтенд работает только через API бэкенда.
+
+### Circle
+
+- **Wallet set** создаётся автоматически при создании первого пользователя, его id сохраняется в таблице
+  `app_settings`. Можно задать готовый через `CIRCLE_WALLET_SET_ID`.
+- **Вебхуки** можно подписать и в консоли: Webhooks → Add subscription → `https://<host>/webhooks/circle`.
+  Circle проверяет адрес запросом `HEAD`, бэкенд отвечает `200`.
+- **Без вебхуков** приложение тоже работает: фоновая сверка опрашивает Circle каждые `RECONCILE_INTERVAL_MS`.
 
 ### Переменные окружения
 
-**apps/backend/.env**
+**apps/backend/.env** (шаблон — `apps/backend/.env.example`)
 
 | Переменная | Обяз. | По умолчанию | Описание |
 |---|---|---|---|
-| `SUPABASE_URL` | да | | URL Supabase |
+| `SUPABASE_URL` | да | | URL Supabase (локально `http://127.0.0.1:54321`) |
 | `SUPABASE_SERVICE_ROLE_KEY` | да | | service_role key |
-| `CIRCLE_BASE_URL` | да | | адрес Circle API (`https://api.circle.com`) |
+| `CIRCLE_BASE_URL` | да | | адрес Circle API: `https://api.circle.com` или mock `http://localhost:4010` |
 | `CIRCLE_API_KEY` | да | | `TEST_API_KEY:...` |
 | `CIRCLE_ENTITY_SECRET` | да | | 32 байта hex |
 | `CIRCLE_BLOCKCHAIN` | | `BASE-SEPOLIA` | сеть кошельков |
-| `CIRCLE_ACCOUNT_TYPE` | | `SCA` | `SCA` или `EOA` (см. решения) |
+| `CIRCLE_ACCOUNT_TYPE` | | `SCA` | `SCA` или `EOA` (см. ключевые решения) |
 | `CIRCLE_WALLET_SET_ID` | | | использовать существующий wallet set |
-| `CIRCLE_WEBHOOK_VERIFY_SIGNATURE` | | `true` | проверка подписи вебхуков |
+| `CIRCLE_WEBHOOK_VERIFY_SIGNATURE` | | `true` | проверка подписи вебхуков (`false` — только для локальной отладки) |
 | `RECONCILE_INTERVAL_MS` | | `30000` | период сверки с Circle, `0` отключает |
 | `PORT` | | `4000` | |
 | `CORS_ORIGIN` | | `http://localhost:3000` | origin фронтенда, можно через запятую |
 | `LOG_LEVEL` | | `info` | |
 
-**apps/web/.env.local**
+**apps/web/.env.local** (шаблон — `apps/web/.env.example`)
 
 | Переменная | Описание |
 |---|---|
 | `NEXT_PUBLIC_API_URL` | адрес бэкенда, `http://localhost:4000` |
 
-### Скрипты
+---
+
+## Скрипты
 
 | Команда | Что делает |
 |---|---|
-| `pnpm dev` | backend + web в watch-режиме |
+| `pnpm dev` | бэкенд (:4000) и фронтенд (:3000) в watch-режиме; по отдельности — `pnpm dev:backend`, `pnpm dev:web` |
 | `pnpm build` / `pnpm typecheck` | сборка / проверка типов всех пакетов |
-| `pnpm lint` / `pnpm lint:fix` | ESLint по всему монорепо (typescript-eslint с проверкой типов, Next.js, правила хуков React) |
+| `pnpm test` / `pnpm test:integration` | unit-тесты / все тесты с локальным Supabase |
+| `pnpm lint` / `pnpm lint:fix` | ESLint |
 | `pnpm format` / `pnpm format:check` | Prettier |
-| `pnpm check` | всё сразу: формат, линтер, типы, тесты |
-| `pnpm test` | тесты (интеграционные запускаются, если задан `TEST_SUPABASE_*`, см. ниже) |
+| `pnpm check` | формат, линтер, типы, тесты |
 | `pnpm db:start` / `db:stop` / `db:reset` / `db:push` | Supabase CLI |
+| `pnpm --filter @circle-wallet/backend circle:fake` | mock Circle API на :4010 |
+| `pnpm --filter @circle-wallet/backend circle:entity-secret` | создать и зарегистрировать Entity Secret |
+| `pnpm --filter @circle-wallet/backend circle:subscribe-webhook <url>` | подписать вебхуки Circle на адрес |
 
-**Тесты.** Юнит-тесты покрывают суммы и подпись вебхуков. Интеграционные тесты гоняют полный HTTP-стек бэкенда
-против настоящего Postgres (локальный Supabase) с фейковым Circle: пополнение, вывод, идемпотентность,
-вебхуки не по порядку, конкурентные выводы, повторная отправка, догоняющая синхронизация.
+---
 
-```bash
-pnpm db:start
-TEST_SUPABASE_URL=http://127.0.0.1:54321 TEST_SUPABASE_SERVICE_ROLE_KEY=<service_role> pnpm test
+## Структура проекта
+
 ```
+apps/
+  backend/                 Express + TypeScript
+    src/circle/            клиент Circle API, проверка подписи вебхуков
+    src/services/          пользователи, учёт (ledger), выводы, фоновая сверка
+    src/routes/            HTTP API и вебхуки
+    src/middleware/        error, request-logger, cors
+    scripts/               entity secret, подписка на вебхуки, mock Circle
+    test/                  unit и интеграционные тесты, фейковый Circle
+  web/                     Next.js (App Router) + Mantine + TanStack Query
+    components/            карточка кошелька, пополнение, вывод, история
+    lib/                   клиент API и его middleware (network, json)
+    i18n/, messages/       next-intl, переводы ru/en
+packages/
+  shared/                  типы контракта API, общие для бэкенда и фронтенда
+supabase/
+  migrations/              схема БД: таблицы, представления, SQL-функции, триггеры
+scripts/                   test-integration.sh
+```
+
+Монорепо на **pnpm workspaces**. Соглашения:
+
+- типы — только в `*.types.ts` рядом с модулем; контракт API — `packages/shared/src/api.types.ts`;
+- middleware — в `*.middleware.ts`;
+- форматирование — Prettier (`.prettierrc.json`, ширина 120), линтер — ESLint 9 (`eslint.config.mjs`); ESLint 9,
+  а не 10, потому что `eslint-config-next` 16 тянет `eslint-plugin-react`, который пока поддерживает ESLint ≤ 9;
+- `.vscode/` — форматирование и исправления ESLint при сохранении, рекомендуемые расширения.
 
 ---
 
