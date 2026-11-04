@@ -1,0 +1,42 @@
+import { createApp, type AppDeps } from './app.js';
+import { CircleClient } from './circle/client.js';
+import { WebhookSignatureVerifier } from './circle/webhookSignature.js';
+import type { Config } from './config.js';
+import { Db } from './lib/db.js';
+import type { Logger } from './lib/logger.js';
+import { LedgerService } from './services/ledger.js';
+import { Reconciler } from './services/reconciler.js';
+import { TokenService } from './services/tokens.js';
+import { UserService } from './services/users.js';
+import { WithdrawalService } from './services/withdrawals.js';
+
+/** Wires all services together. `fetchImpl` lets tests swap the Circle API. */
+export function buildContainer(config: Config, log: Logger, opts: { fetchImpl?: typeof fetch } = {}) {
+  const db = new Db(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY);
+  const circle = new CircleClient({
+    baseUrl: config.CIRCLE_BASE_URL,
+    apiKey: config.CIRCLE_API_KEY,
+    entitySecret: config.CIRCLE_ENTITY_SECRET,
+    fetchImpl: opts.fetchImpl,
+  });
+  const tokens = new TokenService(db, circle);
+  const users = new UserService(db, circle, config, log);
+  const ledger = new LedgerService(db, tokens, log);
+  const withdrawals = new WithdrawalService(db, circle, users, ledger, log);
+  const reconciler = new Reconciler(db, circle, ledger, withdrawals, log);
+  const verifier = new WebhookSignatureVerifier((keyId) => circle.getNotificationPublicKey(keyId));
+
+  const deps: AppDeps = {
+    db,
+    circle,
+    users,
+    ledger,
+    withdrawals,
+    reconciler,
+    verifier,
+    log,
+    corsOrigin: config.CORS_ORIGIN,
+    verifyWebhookSignature: config.CIRCLE_WEBHOOK_VERIFY_SIGNATURE,
+  };
+  return { ...deps, app: createApp(deps) };
+}

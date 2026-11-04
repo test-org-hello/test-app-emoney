@@ -1,0 +1,64 @@
+import { Router } from 'express';
+import { z } from 'zod';
+import type { ItemResponse, ListResponse, Transaction, User, UserDetails } from '@circle-wallet/shared';
+import type { Db } from '../lib/db.js';
+import type { Reconciler } from '../services/reconciler.js';
+import type { UserService } from '../services/users.js';
+import type { WithdrawalService } from '../services/withdrawals.js';
+
+const createUserBody = z.object({ name: z.string().trim().min(1).max(100) });
+const withdrawalBody = z.object({
+  tokenId: z.string().min(1),
+  destinationAddress: z.string().min(1),
+  amount: z.string().min(1),
+});
+const userIdParam = z.object({ id: z.uuid() });
+
+export function usersRouter(deps: {
+  db: Db;
+  users: UserService;
+  withdrawals: WithdrawalService;
+  reconciler: Reconciler;
+}): Router {
+  const r = Router();
+
+  r.get('/', async (_req, res) => {
+    const body: ListResponse<User> = { data: await deps.users.list() };
+    res.json(body);
+  });
+
+  r.post('/', async (req, res) => {
+    const { name } = createUserBody.parse(req.body);
+    const body: ItemResponse<User> = { data: await deps.users.create(name) };
+    res.status(201).json(body);
+  });
+
+  r.get('/:id', async (req, res) => {
+    const { id } = userIdParam.parse(req.params);
+    const body: ItemResponse<UserDetails> = { data: await deps.users.details(id) };
+    res.json(body);
+  });
+
+  r.get('/:id/transactions', async (req, res) => {
+    const { id } = userIdParam.parse(req.params);
+    await deps.users.get(id);
+    const body: ListResponse<Transaction> = { data: await deps.db.listTransactions(id) };
+    res.json(body);
+  });
+
+  r.post('/:id/withdrawals', async (req, res) => {
+    const { id } = userIdParam.parse(req.params);
+    const input = withdrawalBody.parse(req.body);
+    const body: ItemResponse<Transaction> = { data: await deps.withdrawals.create(id, input) };
+    res.status(201).json(body);
+  });
+
+  r.post('/:id/sync', async (req, res) => {
+    const { id } = userIdParam.parse(req.params);
+    const user = await deps.users.get(id);
+    const updated = await deps.reconciler.syncWallet(user.circleWalletId);
+    res.json({ data: { updated } });
+  });
+
+  return r;
+}
