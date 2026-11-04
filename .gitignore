@@ -1,0 +1,21 @@
+node_modules/
+dist/
+.next/
+next-env.d.ts
+*.tsbuildinfo
+coverage/
+
+.env
+.env.*
+!.env.example
+
+# local tooling / secrets, not part of the project
+.mcp.json
+.claude/
+task.md
+supabase/.branches
+supabase/.temp
+*.recovery.dat
+recovery_file*.dat
+
+.DS_Store
