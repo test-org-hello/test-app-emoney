@@ -3,15 +3,15 @@ import '@mantine/notifications/styles.css';
 
 import { ColorSchemeScript, mantineHtmlProps } from '@mantine/core';
 import type { Metadata } from 'next';
-import type { ReactNode } from 'react';
 import { Providers } from './providers';
+import type { WithChildren } from './app.types';
 
 export const metadata: Metadata = {
   title: 'Circle Wallet',
   description: 'Тестовый криптокошелёк на Circle Developer-Controlled Wallets (Base Sepolia)',
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default function RootLayout({ children }: WithChildren) {
   return (
     <html lang="ru" {...mantineHtmlProps}>
       <head>

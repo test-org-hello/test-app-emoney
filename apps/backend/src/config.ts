@@ -1,10 +1,11 @@
 import { z } from 'zod';
+import type { Config } from './config.types.js';
 
 const bool = z
   .enum(['true', 'false', '1', '0'])
   .transform((v) => v === 'true' || v === '1');
 
-const schema = z.object({
+export const configSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
   LOG_LEVEL: z.string().default('info'),
@@ -28,10 +29,8 @@ const schema = z.object({
   RECONCILE_INTERVAL_MS: z.coerce.number().int().min(0).default(30_000),
 });
 
-export type Config = z.infer<typeof schema>;
-
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  const parsed = schema.safeParse(env);
+  const parsed = configSchema.safeParse(env);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((i) => `  - ${i.path.join('.')}: ${i.message}`)

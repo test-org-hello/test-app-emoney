@@ -17,8 +17,9 @@ import {
 import { IconLock, IconWallet } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Session } from '@supabase/supabase-js';
-import { createContext, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type FormEvent } from 'react';
 import { supabase } from '@/lib/supabase';
+import type { AuthGateProps, AuthMode } from './AuthGate.types';
 
 const SessionContext = createContext<Session | null>(null);
 
@@ -30,7 +31,7 @@ export const useSession = () => useContext(SessionContext);
  * unchanged: any signed-in account sees the user list and can act on any
  * wallet, exactly as in the task scenario; sign-in only locks the UI and API.
  */
-export function AuthGate({ children }: { children: ReactNode }) {
+export function AuthGate({ children }: AuthGateProps) {
   const qc = useQueryClient();
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
@@ -60,7 +61,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
 }
 
 function LoginForm() {
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [mode, setMode] = useState<AuthMode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -100,7 +101,7 @@ function LoginForm() {
             </Text>
             <SegmentedControl
               value={mode}
-              onChange={(v) => setMode(v as 'signin' | 'signup')}
+              onChange={(v) => setMode(v as AuthMode)}
               data={[
                 { value: 'signin', label: 'Вход' },
                 { value: 'signup', label: 'Регистрация' },

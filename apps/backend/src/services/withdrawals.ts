@@ -1,9 +1,11 @@
 import type { CreateWithdrawalRequest, Transaction } from '@circle-wallet/shared';
+import type { CircleErrorBody } from '../circle/circle.types.js';
 import { CircleApiError, type CircleClient } from '../circle/client.js';
 import { EVM_ADDRESS_RE, parseAmount } from '../lib/amount.js';
-import { DbError, type Db, type PendingWithdrawal } from '../lib/db.js';
+import { DbError, type Db } from '../lib/db.js';
+import type { PendingWithdrawal } from '../lib/db.types.js';
 import { badRequest, HttpError } from '../lib/errors.js';
-import type { Logger } from '../lib/logger.js';
+import type { Logger } from '../lib/logger.types.js';
 import type { LedgerService } from './ledger.js';
 import type { UserService } from './users.js';
 
@@ -122,6 +124,6 @@ export class WithdrawalService {
 }
 
 function extractMessage(e: CircleApiError): string {
-  const body = e.body as { message?: string } | undefined;
+  const body = e.body as CircleErrorBody | undefined;
   return body?.message ?? e.message;
 }

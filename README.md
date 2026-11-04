@@ -17,6 +17,15 @@ supabase/
 
 Монорепо на **pnpm workspaces**.
 
+Соглашения по файлам:
+- типы — только в файлах `*.types.ts` рядом с модулем (`circle/circle.types.ts`, `lib/db.types.ts`,
+  `components/WalletCard.types.ts`, …); контракт API — `packages/shared/src/api.types.ts`;
+- middleware — в `*.middleware.ts`:
+  - бэкенд, `apps/backend/src/middleware/`: `auth` (проверка токена Supabase на `/api/*`), `error` (404 и
+    маппинг ошибок), `request-logger`, `cors`;
+  - фронт, `apps/web/lib/middleware/`: цепочка для запросов к API — `network` (бэкенд недоступен), `json`
+    (Content-Type), `auth` (Bearer-токен, выход при 401).
+
 ---
 
 ## Быстрый старт (локально)

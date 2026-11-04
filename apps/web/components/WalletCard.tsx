@@ -22,10 +22,11 @@ import { useEffect } from 'react';
 import { api, ApiRequestError, queryKeys } from '@/lib/api';
 import { addressExplorerUrl } from '@/lib/format';
 import { DepositModal } from './DepositModal';
+import type { WalletCardProps } from './WalletCard.types';
 
 export const REFRESH_MS = 4000;
 
-export function WalletCard({ userId, onMissing }: { userId: string; onMissing: () => void }) {
+export function WalletCard({ userId, onMissing }: WalletCardProps) {
   const qc = useQueryClient();
   const [depositOpened, deposit] = useDisclosure(false);
   const user = useQuery({

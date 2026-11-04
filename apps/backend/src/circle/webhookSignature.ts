@@ -1,4 +1,5 @@
 import { createPublicKey, verify, type KeyObject } from 'node:crypto';
+import type { NotificationPublicKeyFetcher } from './circle.types.js';
 
 /**
  * Verifies Circle webhook signatures.
@@ -12,7 +13,7 @@ import { createPublicKey, verify, type KeyObject } from 'node:crypto';
 export class WebhookSignatureVerifier {
   private readonly cache = new Map<string, Promise<KeyObject>>();
 
-  constructor(private readonly fetchPublicKey: (keyId: string) => Promise<{ publicKey: string }>) {}
+  constructor(private readonly fetchPublicKey: NotificationPublicKeyFetcher) {}
 
   async verify(rawBody: Buffer, signatureB64: string | undefined, keyId: string | undefined): Promise<boolean> {
     if (!signatureB64 || !keyId) return false;

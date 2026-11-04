@@ -13,6 +13,7 @@
 import { randomBytes } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import type { EntitySecretRegistrationResponse } from '../src/circle/circle.types.js';
 import { CircleClient } from '../src/circle/client.js';
 
 const baseUrl = process.env.CIRCLE_BASE_URL;
@@ -33,7 +34,7 @@ const entitySecret = existing && /^[0-9a-f]{64}$/i.test(existing) ? existing : r
 const circle = new CircleClient({ baseUrl, apiKey, entitySecret });
 
 try {
-  const data = await circle.request<{ recoveryFile?: string }>('POST', '/v1/w3s/config/entity/entitySecret', {
+  const data = await circle.request<EntitySecretRegistrationResponse>('POST', '/v1/w3s/config/entity/entitySecret', {
     body: { entitySecretCiphertext: await circle.entitySecretCiphertext() },
   });
   if (data?.recoveryFile) {

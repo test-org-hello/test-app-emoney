@@ -8,8 +8,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { api, queryKeys } from '@/lib/api';
 import { shortAddress } from '@/lib/format';
+import type { UserPickerProps } from './UserPicker.types';
 
-export function UserPicker({ value, onChange }: { value: string | null; onChange: (id: string | null) => void }) {
+export function UserPicker({ value, onChange }: UserPickerProps) {
   const qc = useQueryClient();
   const [opened, { open, close }] = useDisclosure(false);
   const [name, setName] = useState('');

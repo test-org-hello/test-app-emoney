@@ -3,47 +3,32 @@ import type {
   CreateWithdrawalRequest,
   ItemResponse,
   ListResponse,
+  SyncResult,
   Transaction,
   User,
   UserDetails,
 } from '@circle-wallet/shared';
-import { supabase } from './supabase';
+import { ApiRequestError } from './api-error';
+import type { FetchHandler, FetchMiddleware } from './http.types';
+import { authMiddleware } from './middleware/auth.middleware';
+import { jsonMiddleware } from './middleware/json.middleware';
+import { networkMiddleware } from './middleware/network.middleware';
+
+export { ApiRequestError };
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000').replace(/\/+$/, '');
 
-export class ApiRequestError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code: string,
-    message: string,
-  ) {
-    super(message);
-  }
-}
+/** Applied outermost first: network errors wrap everything, auth sits closest to fetch. */
+const middleware: FetchMiddleware[] = [networkMiddleware, jsonMiddleware, authMiddleware];
 
-async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  // getSession() returns the cached session and refreshes the token if it expired.
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+const send: FetchHandler = middleware.reduceRight<FetchHandler>(
+  (next, mw) => (url, init) => mw(url, init, next),
+  (url, init) => fetch(url, init),
+);
 
-  let res: Response;
-  try {
-    res = await fetch(`${API_URL}${path}`, {
-      ...init,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...init?.headers,
-      },
-    });
-  } catch {
-    throw new ApiRequestError(0, 'network_error', `Бэкенд недоступен (${API_URL})`);
-  }
+async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await send(`${API_URL}${path}`, init);
   const body = (await res.json().catch(() => null)) as unknown;
-  if (res.status === 401) {
-    // Session is gone or revoked on the server: drop it locally, the AuthGate shows the login form.
-    await supabase.auth.signOut({ scope: 'local' });
-  }
   if (!res.ok) {
     const err = (body as ApiError | null)?.error;
     throw new ApiRequestError(res.status, err?.code ?? 'unknown', err?.message ?? res.statusText);
@@ -64,7 +49,7 @@ export const api = {
       body: JSON.stringify(req),
     }).then((r) => r.data),
   sync: (id: string) =>
-    call<ItemResponse<{ updated: number }>>(`/api/users/${id}/sync`, { method: 'POST' }).then((r) => r.data),
+    call<ItemResponse<SyncResult>>(`/api/users/${id}/sync`, { method: 'POST' }).then((r) => r.data),
 };
 
 export const queryKeys = {

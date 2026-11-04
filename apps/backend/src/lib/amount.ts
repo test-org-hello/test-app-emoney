@@ -2,9 +2,11 @@
  * Amounts travel as decimal strings end to end (API, Circle, Postgres numeric)
  * so we never touch floating point.
  */
+import type { ParseAmountResult } from './amount.types.js';
+
 const DECIMAL_RE = /^(0|[1-9]\d{0,19})(\.\d+)?$/;
 
-export function parseAmount(value: string, decimals: number): { ok: true; value: string } | { ok: false; reason: string } {
+export function parseAmount(value: string, decimals: number): ParseAmountResult {
   const v = value.trim();
   if (!DECIMAL_RE.test(v)) return { ok: false, reason: 'Amount must be a positive decimal number, e.g. 1.5' };
 

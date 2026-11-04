@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import type { User, UserDetails } from '@circle-wallet/shared';
 import type { CircleClient } from '../circle/client.js';
-import type { Config } from '../config.js';
 import type { Db } from '../lib/db.js';
 import { notFound } from '../lib/errors.js';
-import type { Logger } from '../lib/logger.js';
+import type { Logger } from '../lib/logger.types.js';
+import type { UserServiceConfig } from './users.types.js';
 
 const WALLET_SET_SETTING = 'circle_wallet_set_id';
 
@@ -19,7 +19,7 @@ export class UserService {
   constructor(
     private readonly db: Db,
     private readonly circle: CircleClient,
-    private readonly config: Pick<Config, 'CIRCLE_BLOCKCHAIN' | 'CIRCLE_ACCOUNT_TYPE' | 'CIRCLE_WALLET_SET_ID'>,
+    private readonly config: UserServiceConfig,
     private readonly log: Logger,
   ) {}
 

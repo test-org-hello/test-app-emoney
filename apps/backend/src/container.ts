@@ -1,10 +1,11 @@
-import { createApp, type AppDeps } from './app.js';
+import { createApp } from './app.js';
+import type { AppDeps, ContainerOptions } from './app.types.js';
 import { CircleClient } from './circle/client.js';
 import { WebhookSignatureVerifier } from './circle/webhookSignature.js';
-import type { Config } from './config.js';
-import { supabaseAuthVerifier, type AuthVerifier } from './lib/auth.js';
+import type { Config } from './config.types.js';
+import { supabaseAuthVerifier } from './lib/auth.js';
 import { Db } from './lib/db.js';
-import type { Logger } from './lib/logger.js';
+import type { Logger } from './lib/logger.types.js';
 import { LedgerService } from './services/ledger.js';
 import { Reconciler } from './services/reconciler.js';
 import { TokenService } from './services/tokens.js';
@@ -15,7 +16,7 @@ import { WithdrawalService } from './services/withdrawals.js';
 export function buildContainer(
   config: Config,
   log: Logger,
-  opts: { fetchImpl?: typeof fetch; authVerifier?: AuthVerifier } = {},
+  opts: ContainerOptions = {},
 ) {
   const db = new Db(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY);
   const circle = new CircleClient({

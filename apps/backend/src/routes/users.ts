@@ -1,10 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { ItemResponse, ListResponse, Transaction, User, UserDetails } from '@circle-wallet/shared';
-import type { Db } from '../lib/db.js';
-import type { Reconciler } from '../services/reconciler.js';
-import type { UserService } from '../services/users.js';
-import type { WithdrawalService } from '../services/withdrawals.js';
+import type { UsersRouterDeps } from './routes.types.js';
+import type { ItemResponse, ListResponse, SyncResult, Transaction, User, UserDetails } from '@circle-wallet/shared';
 
 const createUserBody = z.object({ name: z.string().trim().min(1).max(100) });
 const withdrawalBody = z.object({
@@ -14,12 +11,7 @@ const withdrawalBody = z.object({
 });
 const userIdParam = z.object({ id: z.uuid() });
 
-export function usersRouter(deps: {
-  db: Db;
-  users: UserService;
-  withdrawals: WithdrawalService;
-  reconciler: Reconciler;
-}): Router {
+export function usersRouter(deps: UsersRouterDeps): Router {
   const r = Router();
 
   r.get('/', async (_req, res) => {
@@ -57,7 +49,8 @@ export function usersRouter(deps: {
     const { id } = userIdParam.parse(req.params);
     const user = await deps.users.get(id);
     const updated = await deps.reconciler.syncWallet(user.circleWalletId);
-    res.json({ data: { updated } });
+    const body: ItemResponse<SyncResult> = { data: { updated } };
+    res.json(body);
   });
 
   return r;

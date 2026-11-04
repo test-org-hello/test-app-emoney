@@ -1,5 +1,6 @@
 import { generateKeyPairSync, privateDecrypt, constants, randomUUID, sign } from 'node:crypto';
-import type { CircleTransaction, CircleWallet } from '../src/circle/client.js';
+import type { CircleTransaction, CircleWallet } from '../src/circle/circle.types.js';
+import type { FakeTxInput, SignedWebhook } from './fakeCircle.types.js';
 
 /**
  * In-memory stand-in for the Circle API, used as `fetchImpl` of CircleClient.
@@ -105,7 +106,7 @@ export class FakeCircle {
     return json(404, { code: 404, message: `fake circle: no route ${method} ${path}` });
   };
 
-  addTx(p: Partial<CircleTransaction> & Pick<CircleTransaction, 'walletId' | 'transactionType' | 'state'>): CircleTransaction {
+  addTx(p: FakeTxInput): CircleTransaction {
     const now = new Date().toISOString();
     const tx: CircleTransaction = {
       id: randomUUID(),
@@ -127,7 +128,7 @@ export class FakeCircle {
   }
 
   /** Builds a webhook delivery exactly like Circle: raw JSON body + ECDSA signature headers. */
-  webhook(tx: CircleTransaction, notificationId: string = randomUUID()) {
+  webhook(tx: CircleTransaction, notificationId: string = randomUUID()): SignedWebhook {
     const body = JSON.stringify({
       subscriptionId: randomUUID(),
       notificationId,

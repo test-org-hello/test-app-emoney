@@ -8,5 +8,3 @@ export const logger = pino({
       : undefined,
   redact: ['req.headers.authorization', '*.entitySecretCiphertext'],
 });
-
-export type Logger = typeof logger;

@@ -7,6 +7,7 @@
  * tunnel to localhost:4000). Circle sends a HEAD request to validate it.
  * The same can be done in the console: Wallets -> Webhooks -> Add subscription.
  */
+import type { NotificationSubscription } from '../src/circle/circle.types.js';
 import { CircleClient } from '../src/circle/client.js';
 
 const endpoint = process.argv[2];
@@ -23,7 +24,7 @@ if (!baseUrl || !apiKey) {
 }
 
 const circle = new CircleClient({ baseUrl, apiKey, entitySecret: '' });
-const sub = await circle.request<{ id: string; endpoint: string; enabled: boolean }>(
+const sub = await circle.request<NotificationSubscription>(
   'POST',
   '/v2/notifications/subscriptions',
   { body: { endpoint, notificationTypes: ['transactions.inbound', 'transactions.outbound'] } },

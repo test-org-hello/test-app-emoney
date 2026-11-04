@@ -19,17 +19,17 @@ import { IconCheck, IconCopy, IconDroplet, IconExternalLink } from '@tabler/icon
 import { useQuery } from '@tanstack/react-query';
 import { QRCodeSVG } from 'qrcode.react';
 import { useEffect, useState } from 'react';
-import type { User } from '@circle-wallet/shared';
 import { api, queryKeys } from '@/lib/api';
 import { FAUCET_URL } from '@/lib/format';
 import { REFRESH_MS } from './WalletCard';
+import type { DepositModalProps } from './DepositModal.types';
 
 /**
  * A deposit is an on-chain transfer *to* the user's Circle wallet address
  * (from the faucet or any other wallet). The app cannot pull funds; it shows
  * where to send them and then watches the history until the deposit shows up.
  */
-export function DepositModal({ user, opened, onClose }: { user: User; opened: boolean; onClose: () => void }) {
+export function DepositModal({ user, opened, onClose }: DepositModalProps) {
   const [openedAt, setOpenedAt] = useState(() => Date.now());
   useEffect(() => {
     if (opened) setOpenedAt(Date.now());

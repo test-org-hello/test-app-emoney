@@ -3,18 +3,19 @@
 import { Anchor, Badge, Card, Group, Loader, ScrollArea, Table, Text, Title, Tooltip } from '@mantine/core';
 import { IconArrowDownLeft, IconArrowUpRight } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
-import type { Transaction, TransactionStatus } from '@circle-wallet/shared';
+import type { TransactionStatus } from '@circle-wallet/shared';
 import { api, queryKeys } from '@/lib/api';
 import { formatDate, shortAddress } from '@/lib/format';
 import { REFRESH_MS } from './WalletCard';
+import type { StatusBadge, TransactionRowProps, TransactionsTableProps } from './TransactionsTable.types';
 
-const STATUS: Record<TransactionStatus, { color: string; label: string }> = {
+const STATUS: Record<TransactionStatus, StatusBadge> = {
   pending: { color: 'yellow', label: 'В обработке' },
   completed: { color: 'green', label: 'Выполнен' },
   failed: { color: 'red', label: 'Не выполнен' },
 };
 
-function Row({ tx }: { tx: Transaction }) {
+function Row({ tx }: TransactionRowProps) {
   const isDeposit = tx.direction === 'deposit';
   const s = STATUS[tx.status];
   const counterparty = isDeposit ? tx.sourceAddress : tx.destinationAddress;
@@ -71,7 +72,7 @@ function Row({ tx }: { tx: Transaction }) {
   );
 }
 
-export function TransactionsTable({ userId }: { userId: string }) {
+export function TransactionsTable({ userId }: TransactionsTableProps) {
   const txs = useQuery({
     queryKey: queryKeys.transactions(userId),
     queryFn: () => api.listTransactions(userId),

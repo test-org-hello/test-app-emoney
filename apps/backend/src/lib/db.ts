@@ -1,51 +1,20 @@
 import { createClient, type PostgrestError, type SupabaseClient } from '@supabase/supabase-js';
-import type { Balance, Token, Transaction, TransactionDirection, User } from '@circle-wallet/shared';
+import type { Balance, Token, Transaction, User } from '@circle-wallet/shared';
+import type {
+  ApplyCircleTxInput,
+  BalanceApiRow,
+  CreateWithdrawalInput,
+  InsertUserInput,
+  PendingCircleTxRow,
+  PendingWithdrawal,
+  PostgrestResult,
+  TokenRow,
+  TransactionApiRow,
+  UnsubmittedWithdrawalRow,
+  UserRow,
+  WebhookProcessedRow,
+} from './db.types.js';
 import { explorerTxUrl } from './explorer.js';
-
-/** Row shapes as returned by the SQL views / tables (see supabase/migrations). */
-interface UserRow {
-  id: string;
-  name: string;
-  circle_wallet_id: string;
-  address: string;
-  blockchain: string;
-  created_at: string;
-}
-
-interface TokenRow {
-  id: string;
-  symbol: string;
-  name: string | null;
-  decimals: number;
-  token_address: string | null;
-  blockchain: string;
-}
-
-interface TransactionApiRow {
-  id: string;
-  user_id: string;
-  direction: TransactionDirection;
-  status: Transaction['status'];
-  circle_state: Transaction['circleState'];
-  circle_tx_id: string | null;
-  amount: string;
-  source_address: string | null;
-  destination_address: string | null;
-  tx_hash: string | null;
-  error_reason: string | null;
-  created_at: string;
-  updated_at: string;
-  token: TokenRow;
-}
-
-interface BalanceApiRow {
-  user_id: string;
-  token_id: string;
-  available: string;
-  incoming: string;
-  outgoing: string;
-  token: TokenRow;
-}
 
 export class DbError extends Error {
   constructor(readonly pg: PostgrestError) {
@@ -54,7 +23,7 @@ export class DbError extends Error {
   }
 }
 
-function check<T>(res: { data: T; error: PostgrestError | null }): T {
+function check<T>(res: PostgrestResult<T>): T {
   if (res.error) throw new DbError(res.error);
   return res.data;
 }
@@ -101,31 +70,6 @@ const toBalance = (r: BalanceApiRow): Balance => ({
   incoming: r.incoming,
   outgoing: r.outgoing,
 });
-
-export interface ApplyCircleTxInput {
-  userId: string;
-  direction: TransactionDirection;
-  circleTxId: string;
-  state: string;
-  tokenId: string;
-  amount: string;
-  source: string | null;
-  destination: string | null;
-  txHash: string | null;
-  error: string | null;
-  refId: string | null;
-}
-
-export interface PendingWithdrawal {
-  id: string;
-  userId: string;
-  walletId: string;
-  tokenId: string;
-  amount: string;
-  destination: string;
-  submitAttempts: number;
-  createdAt: string;
-}
 
 /** All database access of the backend. */
 export class Db {
@@ -174,7 +118,7 @@ export class Db {
     return row ? toUser(row as UserRow) : null;
   }
 
-  async insertUser(u: { id: string; name: string; circleWalletId: string; address: string; blockchain: string }) {
+  async insertUser(u: InsertUserInput): Promise<User> {
     const row = check(
       await this.client
         .from('users')
@@ -235,7 +179,7 @@ export class Db {
 
   // -- ledger writes (all through SQL functions, see migration) --------------
 
-  async createWithdrawal(p: { userId: string; tokenId: string; amount: string; destination: string }) {
+  async createWithdrawal(p: CreateWithdrawalInput): Promise<Transaction> {
     const rows = check(
       await this.client.rpc('create_withdrawal', {
         p_user_id: p.userId,
@@ -291,16 +235,7 @@ export class Db {
         .is('circle_tx_id', null)
         .lt('created_at', olderThan.toISOString())
         .limit(50),
-    ) as unknown as Array<{
-      id: string;
-      user_id: string;
-      token_id: string;
-      amount: string;
-      destination_address: string;
-      submit_attempts: number;
-      created_at: string;
-      users: { circle_wallet_id: string };
-    }>;
+    ) as unknown as UnsubmittedWithdrawalRow[];
     return rows.map((r) => ({
       id: r.id,
       userId: r.user_id,
@@ -322,7 +257,7 @@ export class Db {
         .eq('status', 'pending')
         .not('circle_tx_id', 'is', null)
         .limit(limit),
-    ) as Array<{ circle_tx_id: string }>;
+    ) as PendingCircleTxRow[];
     return [...new Set(rows.map((r) => r.circle_tx_id))];
   }
 
@@ -337,7 +272,7 @@ export class Db {
     );
     const row = check(
       await this.client.from('webhook_events').select('processed_at').eq('notification_id', id).single(),
-    ) as { processed_at: string | null };
+    ) as WebhookProcessedRow;
     return row.processed_at === null;
   }
 

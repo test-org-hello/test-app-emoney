@@ -6,6 +6,7 @@ import { IconSend } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, queryKeys } from '@/lib/api';
+import type { WithdrawFormProps } from './WithdrawForm.types';
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const AMOUNT_RE = /^\d+(\.\d+)?$/;
@@ -20,7 +21,7 @@ function cmpDecimal(a: string, b: string): number {
   return x === y ? 0 : x > y ? 1 : -1;
 }
 
-export function WithdrawForm({ userId }: { userId: string }) {
+export function WithdrawForm({ userId }: WithdrawFormProps) {
   const qc = useQueryClient();
   const user = useQuery({ queryKey: queryKeys.user(userId), queryFn: () => api.getUser(userId) });
   const balances = (user.data?.balances ?? []).filter((b) => b.available !== '0');

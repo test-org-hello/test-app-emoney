@@ -18,7 +18,7 @@
  */
 import { createServer } from 'node:http';
 import { FakeCircle } from '../test/fakeCircle.js';
-import type { CircleTransaction } from '../src/circle/client.js';
+import type { CircleTransaction } from '../src/circle/circle.types.js';
 
 const PORT = Number(process.env.FAKE_CIRCLE_PORT ?? 4010);
 const WEBHOOK_URL = process.env.WEBHOOK_URL ?? 'http://localhost:4000/webhooks/circle';

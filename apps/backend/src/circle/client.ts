@@ -1,5 +1,24 @@
 import { constants, publicEncrypt, randomUUID } from 'node:crypto';
-import type { CircleTransactionState } from '@circle-wallet/shared';
+import type {
+  CircleClientOptions,
+  CircleEnvelope,
+  CircleErrorBody,
+  EntityPublicKeyResponse,
+  TokenResponse,
+  TransactionResponse,
+  TransactionsResponse,
+  WalletSetResponse,
+  WalletsResponse,
+  CircleNotificationPublicKey,
+  CircleRequestInit,
+  CircleToken,
+  CircleTransaction,
+  CircleWallet,
+  CreateTransferParams,
+  CreateTransferResult,
+  CreateWalletParams,
+  ListTransactionsQuery,
+} from './circle.types.js';
 
 /**
  * Thin typed client for the parts of the Circle Developer-Controlled Wallets
@@ -25,63 +44,6 @@ export class CircleApiError extends Error {
   }
 }
 
-export interface CircleWallet {
-  id: string;
-  address: string;
-  blockchain: string;
-  state: string;
-  walletSetId: string;
-  accountType?: string;
-  refId?: string;
-  name?: string;
-}
-
-export interface CircleTransaction {
-  id: string;
-  state: CircleTransactionState;
-  blockchain: string;
-  transactionType: 'INBOUND' | 'OUTBOUND';
-  walletId?: string;
-  tokenId?: string;
-  amounts?: string[];
-  sourceAddress?: string;
-  destinationAddress?: string;
-  txHash?: string;
-  refId?: string;
-  errorReason?: string;
-  operation?: string;
-  createDate: string;
-  updateDate: string;
-}
-
-export interface CircleToken {
-  id: string;
-  blockchain: string;
-  tokenAddress?: string;
-  standard?: string;
-  name?: string;
-  symbol?: string;
-  decimals?: number;
-  isNative?: boolean;
-}
-
-export interface CircleNotificationPublicKey {
-  id: string;
-  algorithm: string;
-  publicKey: string;
-  createDate: string;
-}
-
-export interface CircleClientOptions {
-  baseUrl: string;
-  apiKey: string;
-  entitySecret: string;
-  fetchImpl?: typeof fetch;
-  timeoutMs?: number;
-}
-
-type Query = Record<string, string | number | undefined>;
-
 export class CircleClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
@@ -96,7 +58,7 @@ export class CircleClient {
 
   // -- low level -------------------------------------------------------------
 
-  async request<T>(method: string, path: string, init: { query?: Query; body?: unknown } = {}): Promise<T> {
+  async request<T>(method: string, path: string, init: CircleRequestInit = {}): Promise<T> {
     const url = new URL(this.baseUrl + path);
     for (const [k, v] of Object.entries(init.query ?? {})) {
       if (v !== undefined && v !== '') url.searchParams.set(k, String(v));
@@ -123,7 +85,7 @@ export class CircleClient {
     }
 
     if (!res.ok) {
-      const err = (json ?? {}) as { code?: number | string; message?: string };
+      const err = (json ?? {}) as CircleErrorBody;
       throw new CircleApiError(
         res.status,
         err.code,
@@ -131,7 +93,7 @@ export class CircleClient {
         json,
       );
     }
-    return (json as { data: T }).data;
+    return (json as CircleEnvelope<T>).data;
   }
 
   /**
@@ -139,7 +101,7 @@ export class CircleClient {
    * of the entity secret, RSA-OAEP(SHA-256) encrypted with Circle's public key.
    */
   async entitySecretCiphertext(): Promise<string> {
-    this.entityPublicKey ??= this.request<{ publicKey: string }>('GET', '/v1/w3s/config/entity/publicKey')
+    this.entityPublicKey ??= this.request<EntityPublicKeyResponse>('GET', '/v1/w3s/config/entity/publicKey')
       .then((d) => d.publicKey)
       .catch((e) => {
         this.entityPublicKey = undefined;
@@ -152,21 +114,14 @@ export class CircleClient {
   // -- wallets ---------------------------------------------------------------
 
   async createWalletSet(name: string, idempotencyKey: string = randomUUID()) {
-    const data = await this.request<{ walletSet: { id: string } }>('POST', '/v1/w3s/developer/walletSets', {
+    const data = await this.request<WalletSetResponse>('POST', '/v1/w3s/developer/walletSets', {
       body: { idempotencyKey, name, entitySecretCiphertext: await this.entitySecretCiphertext() },
     });
     return data.walletSet;
   }
 
-  async createWallet(params: {
-    walletSetId: string;
-    blockchain: string;
-    accountType: 'SCA' | 'EOA';
-    idempotencyKey: string;
-    name?: string;
-    refId?: string;
-  }): Promise<CircleWallet> {
-    const data = await this.request<{ wallets: CircleWallet[] }>('POST', '/v1/w3s/developer/wallets', {
+  async createWallet(params: CreateWalletParams): Promise<CircleWallet> {
+    const data = await this.request<WalletsResponse>('POST', '/v1/w3s/developer/wallets', {
       body: {
         idempotencyKey: params.idempotencyKey,
         entitySecretCiphertext: await this.entitySecretCiphertext(),
@@ -184,17 +139,8 @@ export class CircleClient {
 
   // -- transactions ----------------------------------------------------------
 
-  /** `idempotencyKey` must be a UUID v4; repeating it returns the original transaction. */
-  async createTransfer(params: {
-    idempotencyKey: string;
-    walletId: string;
-    tokenId: string;
-    destinationAddress: string;
-    amount: string;
-    refId?: string;
-    feeLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
-  }) {
-    return this.request<{ id: string; state: CircleTransactionState }>(
+  async createTransfer(params: CreateTransferParams): Promise<CreateTransferResult> {
+    return this.request<CreateTransferResult>(
       'POST',
       '/v1/w3s/developer/transactions/transfer',
       {
@@ -213,7 +159,7 @@ export class CircleClient {
   }
 
   async getTransaction(id: string): Promise<CircleTransaction> {
-    const data = await this.request<{ transaction: CircleTransaction }>(
+    const data = await this.request<TransactionResponse>(
       'GET',
       `/v1/w3s/transactions/${encodeURIComponent(id)}`,
     );
@@ -221,16 +167,10 @@ export class CircleClient {
   }
 
   /** Iterates over all pages (max page size is 50). */
-  async *listTransactions(query: {
-    walletIds?: string[];
-    txType?: 'INBOUND' | 'OUTBOUND';
-    from?: string;
-    refId?: string;
-    blockchain?: string;
-  }): AsyncGenerator<CircleTransaction> {
+  async *listTransactions(query: ListTransactionsQuery): AsyncGenerator<CircleTransaction> {
     let pageAfter: string | undefined;
     for (;;) {
-      const data = await this.request<{ transactions: CircleTransaction[] }>('GET', '/v1/w3s/transactions', {
+      const data = await this.request<TransactionsResponse>('GET', '/v1/w3s/transactions', {
         query: {
           walletIds: query.walletIds?.join(','),
           txType: query.txType,
@@ -250,7 +190,7 @@ export class CircleClient {
   }
 
   async getToken(id: string): Promise<CircleToken> {
-    const data = await this.request<{ token: CircleToken }>('GET', `/v1/w3s/tokens/${encodeURIComponent(id)}`);
+    const data = await this.request<TokenResponse>('GET', `/v1/w3s/tokens/${encodeURIComponent(id)}`);
     return data.token;
   }
 

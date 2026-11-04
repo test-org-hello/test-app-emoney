@@ -15,6 +15,7 @@ import { loadConfig } from '../src/config.js';
 import { buildContainer } from '../src/container.js';
 import { supabaseAuthVerifier } from '../src/lib/auth.js';
 import { FakeCircle } from './fakeCircle.js';
+import type { SignedWebhook } from './fakeCircle.types.js';
 
 const url = process.env.TEST_SUPABASE_URL;
 const key = process.env.TEST_SUPABASE_SERVICE_ROLE_KEY;
@@ -33,7 +34,7 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
   const history = async (id: string) =>
     (await api.get(`/api/users/${id}/transactions`).expect(200)).body.data as Transaction[];
   const usdc = (d: UserDetails) => d.balances.find((b) => b.token.symbol === 'USDC');
-  const deliver = (wh: { body: string; headers: Record<string, string> }) =>
+  const deliver = (wh: SignedWebhook) =>
     anon.post('/webhooks/circle').set(wh.headers).send(wh.body);
 
   beforeAll(async () => {

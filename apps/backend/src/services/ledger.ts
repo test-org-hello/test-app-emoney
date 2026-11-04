@@ -1,7 +1,7 @@
 import type { Transaction } from '@circle-wallet/shared';
-import type { CircleTransaction } from '../circle/client.js';
+import type { CircleTransaction } from '../circle/circle.types.js';
 import type { Db } from '../lib/db.js';
-import type { Logger } from '../lib/logger.js';
+import type { Logger } from '../lib/logger.types.js';
 import type { TokenService } from './tokens.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

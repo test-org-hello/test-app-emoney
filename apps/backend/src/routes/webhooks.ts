@@ -1,18 +1,6 @@
 import express, { Router } from 'express';
-import type { CircleClient } from '../circle/client.js';
-import type { WebhookSignatureVerifier } from '../circle/webhookSignature.js';
-import type { Db } from '../lib/db.js';
-import type { Logger } from '../lib/logger.js';
-import type { LedgerService } from '../services/ledger.js';
-
-interface CircleNotification {
-  subscriptionId?: string;
-  notificationId?: string;
-  notificationType?: string;
-  notification?: { id?: string } & Record<string, unknown>;
-  timestamp?: string;
-  version?: number;
-}
+import type { CircleNotification } from '../circle/circle.types.js';
+import type { WebhooksRouterDeps } from './routes.types.js';
 
 /**
  * POST /webhooks/circle
@@ -23,14 +11,7 @@ interface CircleNotification {
  *     if notifications arrive out of order.
  * Any failure returns 5xx so Circle retries; the reconciler is a second net.
  */
-export function webhooksRouter(deps: {
-  db: Db;
-  circle: CircleClient;
-  ledger: LedgerService;
-  verifier: WebhookSignatureVerifier;
-  verifySignature: boolean;
-  log: Logger;
-}): Router {
+export function webhooksRouter(deps: WebhooksRouterDeps): Router {
   const r = Router();
 
   // Circle validates the endpoint URL with HEAD when a subscription is created.

@@ -1,6 +1,6 @@
 import type { CircleClient } from '../circle/client.js';
 import type { Db } from '../lib/db.js';
-import type { Logger } from '../lib/logger.js';
+import type { Logger } from '../lib/logger.types.js';
 import type { LedgerService } from './ledger.js';
 import type { WithdrawalService } from './withdrawals.js';
 
