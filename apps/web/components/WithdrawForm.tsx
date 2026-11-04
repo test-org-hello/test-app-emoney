@@ -5,8 +5,9 @@ import { notifications } from '@mantine/notifications';
 import { IconSend } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useErrorMessage } from '@/lib/errors';
+import type { CreateWithdrawalRequest } from '@circle-wallet/shared';
 import { api, queryKeys } from '@/lib/api';
 import type { WithdrawFormProps } from './WithdrawForm.types';
 
@@ -30,20 +31,14 @@ export function WithdrawForm({ userId }: WithdrawFormProps) {
   const user = useQuery({ queryKey: queryKeys.user(userId), queryFn: () => api.getUser(userId) });
   const balances = (user.data?.balances ?? []).filter((b) => b.available !== '0');
 
-  const [tokenId, setTokenId] = useState<string | null>(null);
+  // The form is remounted per user (`key={userId}` in the page), so its state never leaks between users.
+  const [pickedTokenId, setTokenId] = useState<string | null>(null);
   const [destination, setDestination] = useState('');
   const [amount, setAmount] = useState('');
 
-  useEffect(() => {
-    if (!tokenId || !balances.some((b) => b.token.id === tokenId)) setTokenId(balances[0]?.token.id ?? null);
-  }, [balances, tokenId]);
-
-  useEffect(() => {
-    setDestination('');
-    setAmount('');
-  }, [userId]);
-
-  const balance = balances.find((b) => b.token.id === tokenId);
+  // Derived, not synced in an effect: the picked token if it still has funds, otherwise the first one.
+  const balance = balances.find((b) => b.token.id === pickedTokenId) ?? balances[0];
+  const tokenId = balance?.token.id ?? null;
   const decimals = balance?.token.decimals ?? 6;
 
   const amountError = (() => {
@@ -51,13 +46,14 @@ export function WithdrawForm({ userId }: WithdrawFormProps) {
     if (!AMOUNT_RE.test(amount)) return t('errorNumber');
     if ((amount.split('.')[1] ?? '').length > decimals) return t('errorDecimals', { decimals });
     if (cmpDecimal(amount, '0') <= 0) return t('errorPositive');
-    if (balance && cmpDecimal(amount, balance.available) > 0) return t('errorExceeds', { available: balance.available });
+    if (balance && cmpDecimal(amount, balance.available) > 0)
+      return t('errorExceeds', { available: balance.available });
     return null;
   })();
   const addressError = destination && !ADDRESS_RE.test(destination.trim()) ? t('errorAddress') : null;
 
   const withdraw = useMutation({
-    mutationFn: () => api.withdraw(userId, { tokenId: tokenId!, destinationAddress: destination.trim(), amount }),
+    mutationFn: (req: CreateWithdrawalRequest) => api.withdraw(userId, req),
     onSuccess: async (tx) => {
       await Promise.all([
         qc.invalidateQueries({ queryKey: queryKeys.user(userId) }),
@@ -79,7 +75,7 @@ export function WithdrawForm({ userId }: WithdrawFormProps) {
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    withdraw.mutate();
+    if (tokenId) withdraw.mutate({ tokenId, destinationAddress: destination.trim(), amount });
   };
 
   const canSubmit = !!tokenId && !!amount && !!destination && !amountError && !addressError;
@@ -135,7 +131,13 @@ export function WithdrawForm({ userId }: WithdrawFormProps) {
               />
             </Grid.Col>
           </Grid>
-          <Button type="submit" mt="md" leftSection={<IconSend size={16} />} loading={withdraw.isPending} disabled={!canSubmit}>
+          <Button
+            type="submit"
+            mt="md"
+            leftSection={<IconSend size={16} />}
+            loading={withdraw.isPending}
+            disabled={!canSubmit}
+          >
             {t('submit')}
           </Button>
         </form>

@@ -47,7 +47,7 @@ function Home() {
           {userId ? (
             <Stack gap="lg">
               <WalletCard userId={userId} onMissing={() => selectUser(null)} />
-              <WithdrawForm userId={userId} />
+              <WithdrawForm key={userId} userId={userId} />
               <TransactionsTable userId={userId} />
             </Stack>
           ) : (

@@ -10,7 +10,7 @@
 import { pino } from 'pino';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Transaction, User, UserDetails } from '@circle-wallet/shared';
+import type { ApiError, ItemResponse, Transaction, User, UserDetails } from '@circle-wallet/shared';
 import { loadConfig } from '../src/config.js';
 import { buildContainer } from '../src/container.js';
 import { FakeCircle } from './fakeCircle.js';
@@ -27,12 +27,15 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
   const external = '0x' + '1'.repeat(40);
   let savedCursor: string | null = null;
 
-  const details = async (id: string) => (await api.get(`/api/users/${id}`).expect(200)).body.data as UserDetails;
+  /** supertest bodies are `any`; read them through the API contract types. */
+  const dataOf = <T>(res: { body: unknown }) => (res.body as ItemResponse<T>).data;
+  const errorOf = (res: { body: unknown }) => (res.body as ApiError).error;
+
+  const details = async (id: string) => dataOf<UserDetails>(await api.get(`/api/users/${id}`).expect(200));
   const history = async (id: string) =>
-    (await api.get(`/api/users/${id}/transactions`).expect(200)).body.data as Transaction[];
+    dataOf<Transaction[]>(await api.get(`/api/users/${id}/transactions`).expect(200));
   const usdc = (d: UserDetails) => d.balances.find((b) => b.token.symbol === 'USDC');
-  const deliver = (wh: SignedWebhook) =>
-    api.post('/webhooks/circle').set(wh.headers).send(wh.body);
+  const deliver = (wh: SignedWebhook) => api.post('/webhooks/circle').set(wh.headers).send(wh.body);
 
   beforeAll(async () => {
     const config = loadConfig({
@@ -60,18 +63,27 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
 
   it('creates a user with its own Circle wallet / deposit address', async () => {
     const res = await api.post('/api/users').send({ name: 'Alice' }).expect(201);
-    alice = res.body.data;
+    alice = dataOf<User>(res);
     expect(alice.address).toMatch(/^0x[0-9a-f]{40}$/);
     expect(circle.wallets.get(alice.circleWalletId)?.refId).toBe(alice.id);
 
-    const list = (await api.get('/api/users').expect(200)).body.data as User[];
+    const list = dataOf<User[]>(await api.get('/api/users').expect(200));
     expect(list.map((u) => u.id)).toContain(alice.id);
   });
 
   it('rejects webhooks with a bad signature', async () => {
-    const tx = circle.addTx({ walletId: alice.circleWalletId, transactionType: 'INBOUND', state: 'COMPLETE', amounts: ['1'] });
+    const tx = circle.addTx({
+      walletId: alice.circleWalletId,
+      transactionType: 'INBOUND',
+      state: 'COMPLETE',
+      amounts: ['1'],
+    });
     const wh = circle.webhook(tx);
-    await api.post('/webhooks/circle').set({ ...wh.headers, 'X-Circle-Signature': 'AAAA' }).send(wh.body).expect(401);
+    await api
+      .post('/webhooks/circle')
+      .set({ ...wh.headers, 'X-Circle-Signature': 'AAAA' })
+      .send(wh.body)
+      .expect(401);
     circle.txs.delete(tx.id);
   });
 
@@ -89,7 +101,11 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
 
     let d = await details(alice.id);
     expect(usdc(d)).toMatchObject({ available: '0', incoming: '10.5' });
-    expect((await history(alice.id))[0]).toMatchObject({ direction: 'deposit', status: 'pending', circleState: 'CONFIRMED' });
+    expect((await history(alice.id))[0]).toMatchObject({
+      direction: 'deposit',
+      status: 'pending',
+      circleState: 'CONFIRMED',
+    });
 
     circle.setState(tx.id, 'COMPLETE');
     const wh = circle.webhook(tx);
@@ -105,7 +121,10 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
 
   it('withdrawal: validation and insufficient funds', async () => {
     const tokenId = circle.usdc.id;
-    await api.post(`/api/users/${alice.id}/withdrawals`).send({ tokenId, destinationAddress: 'nope', amount: '1' }).expect(400);
+    await api
+      .post(`/api/users/${alice.id}/withdrawals`)
+      .send({ tokenId, destinationAddress: 'nope', amount: '1' })
+      .expect(400);
     await api
       .post(`/api/users/${alice.id}/withdrawals`)
       .send({ tokenId, destinationAddress: external, amount: '1.0000001' })
@@ -114,7 +133,7 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
       .post(`/api/users/${alice.id}/withdrawals`)
       .send({ tokenId, destinationAddress: external, amount: '10.6' })
       .expect(422);
-    expect(res.body.error.code).toBe('insufficient_funds');
+    expect(errorOf(res).code).toBe('insufficient_funds');
   });
 
   it('withdrawal: reserves funds, completes via webhook; late/out-of-order webhook does not regress', async () => {
@@ -122,7 +141,7 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
       .post(`/api/users/${alice.id}/withdrawals`)
       .send({ tokenId: circle.usdc.id, destinationAddress: external, amount: '3' })
       .expect(201);
-    const w = res.body.data as Transaction;
+    const w = dataOf<Transaction>(res);
     expect(w).toMatchObject({ direction: 'withdrawal', status: 'pending', circleState: 'INITIATED' });
     expect(circle.transferRequests.at(-1)).toMatchObject({ idempotencyKey: w.id, refId: w.id, amounts: ['3'] });
 
@@ -142,12 +161,12 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
   });
 
   it('withdrawal: failed on-chain releases the funds', async () => {
-    const w = (
+    const w = dataOf<Transaction>(
       await api
         .post(`/api/users/${alice.id}/withdrawals`)
         .send({ tokenId: circle.usdc.id, destinationAddress: external, amount: '2' })
-        .expect(201)
-    ).body.data as Transaction;
+        .expect(201),
+    );
     expect(usdc(await details(alice.id))!.available).toBe('5.5');
 
     const ctx = circle.setState(w.circleTransactionId!, 'FAILED', { errorReason: 'INSUFFICIENT_NATIVE_TOKEN' });
@@ -160,12 +179,12 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
 
   it('withdrawal: permanent Circle rejection fails it immediately', async () => {
     circle.failNextTransferWith = 400;
-    const w = (
+    const w = dataOf<Transaction>(
       await api
         .post(`/api/users/${alice.id}/withdrawals`)
         .send({ tokenId: circle.usdc.id, destinationAddress: external, amount: '1' })
-        .expect(201)
-    ).body.data as Transaction;
+        .expect(201),
+    );
     expect(w.status).toBe('failed');
     expect(w.errorReason).toContain('simulated failure');
     expect(usdc(await details(alice.id))!.available).toBe('7.5');
@@ -173,17 +192,20 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
 
   it('withdrawal: transient Circle error stays pending and the reconciler resubmits it once', async () => {
     circle.failNextTransferWith = 503;
-    const w = (
+    const w = dataOf<Transaction>(
       await api
         .post(`/api/users/${alice.id}/withdrawals`)
         .send({ tokenId: circle.usdc.id, destinationAddress: external, amount: '1.5' })
-        .expect(201)
-    ).body.data as Transaction;
+        .expect(201),
+    );
     expect(w).toMatchObject({ status: 'pending', circleTransactionId: null });
     expect(usdc(await details(alice.id))!.available).toBe('6');
 
     // pretend it is older than the resubmit threshold
-    await c.db.client.from('transactions').update({ created_at: new Date(Date.now() - 60_000).toISOString() }).eq('id', w.id);
+    await c.db.client
+      .from('transactions')
+      .update({ created_at: new Date(Date.now() - 60_000).toISOString() })
+      .eq('id', w.id);
     await c.reconciler.runOnce();
     await c.reconciler.runOnce(); // second run must not send a second transfer
 
@@ -197,7 +219,9 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
     const before = Number(usdc(await details(alice.id))!.available); // 6
     const results = await Promise.all(
       Array.from({ length: 5 }, () =>
-        api.post(`/api/users/${alice.id}/withdrawals`).send({ tokenId: circle.usdc.id, destinationAddress: external, amount: '2' }),
+        api
+          .post(`/api/users/${alice.id}/withdrawals`)
+          .send({ tokenId: circle.usdc.id, destinationAddress: external, amount: '2' }),
       ),
     );
     const ok = results.filter((r) => r.status === 201).length;

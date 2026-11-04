@@ -16,15 +16,16 @@
  *   curl -X POST localhost:4010/_fake/deposit -H 'content-type: application/json' \
  *        -d '{"address":"0x...","amount":"25"}'
  */
-import { createServer } from 'node:http';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { FakeCircle } from '../test/fakeCircle.js';
 import type { CircleTransaction } from '../src/circle/circle.types.js';
+import type { FakeDepositRequest } from '../test/fakeCircle.types.js';
 
 const PORT = Number(process.env.FAKE_CIRCLE_PORT ?? 4010);
 const WEBHOOK_URL = process.env.WEBHOOK_URL ?? 'http://localhost:4000/webhooks/circle';
 const circle = new FakeCircle();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const hash = () => '0x' + [...Array(64)].map(() => Math.floor(Math.random() * 16).toString(16)).join('');
+const hash = () => '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
 
 async function notify(tx: CircleTransaction) {
   const wh = circle.webhook(tx);
@@ -35,18 +36,19 @@ async function notify(tx: CircleTransaction) {
 async function progress(id: string, states: CircleTransaction['state'][]) {
   for (const s of states) {
     await sleep(3000);
-    const extra: Partial<CircleTransaction> = s === 'SENT' ? { txHash: hash() } : s === 'FAILED' ? { errorReason: 'FAKE_FAILURE' } : {};
+    const extra: Partial<CircleTransaction> =
+      s === 'SENT' ? { txHash: hash() } : s === 'FAILED' ? { errorReason: 'FAKE_FAILURE' } : {};
     await notify(circle.setState(id, s, extra));
   }
 }
 
-const server = createServer(async (req, res) => {
+async function handle(req: IncomingMessage, res: ServerResponse) {
   const chunks: Buffer[] = [];
   for await (const c of req) chunks.push(c as Buffer);
   const body = Buffer.concat(chunks).toString();
 
   if (req.method === 'POST' && req.url === '/_fake/deposit') {
-    const { address, amount } = JSON.parse(body || '{}') as { address?: string; amount?: string };
+    const { address, amount } = JSON.parse(body || '{}') as FakeDepositRequest;
     const wallet = [...circle.wallets.values()].find((w) => w.address.toLowerCase() === address?.toLowerCase());
     if (!wallet || !amount) {
       res.writeHead(400).end('unknown address or missing amount');
@@ -78,6 +80,13 @@ const server = createServer(async (req, res) => {
   }
 
   res.writeHead(response.status, { 'content-type': 'application/json' }).end(await response.text());
+}
+
+const server = createServer((req, res) => {
+  void handle(req, res).catch((e: unknown) => {
+    console.error(e);
+    res.writeHead(500).end();
+  });
 });
 
 server.listen(PORT, () => {

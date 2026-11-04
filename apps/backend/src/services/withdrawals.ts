@@ -51,7 +51,8 @@ export class WithdrawalService {
       if (e instanceof DbError && e.message === 'insufficient_funds') {
         throw new HttpError(422, 'insufficient_funds', 'Amount exceeds available balance');
       }
-      if (e instanceof DbError && e.message === 'user_not_found') throw new HttpError(404, 'not_found', 'User not found');
+      if (e instanceof DbError && e.message === 'user_not_found')
+        throw new HttpError(404, 'not_found', 'User not found');
       throw e;
     }
 

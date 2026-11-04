@@ -140,29 +140,22 @@ export class CircleClient {
   // -- transactions ----------------------------------------------------------
 
   async createTransfer(params: CreateTransferParams): Promise<CreateTransferResult> {
-    return this.request<CreateTransferResult>(
-      'POST',
-      '/v1/w3s/developer/transactions/transfer',
-      {
-        body: {
-          idempotencyKey: params.idempotencyKey,
-          entitySecretCiphertext: await this.entitySecretCiphertext(),
-          walletId: params.walletId,
-          tokenId: params.tokenId,
-          destinationAddress: params.destinationAddress,
-          amounts: [params.amount],
-          feeLevel: params.feeLevel ?? 'MEDIUM',
-          refId: params.refId,
-        },
+    return this.request<CreateTransferResult>('POST', '/v1/w3s/developer/transactions/transfer', {
+      body: {
+        idempotencyKey: params.idempotencyKey,
+        entitySecretCiphertext: await this.entitySecretCiphertext(),
+        walletId: params.walletId,
+        tokenId: params.tokenId,
+        destinationAddress: params.destinationAddress,
+        amounts: [params.amount],
+        feeLevel: params.feeLevel ?? 'MEDIUM',
+        refId: params.refId,
       },
-    );
+    });
   }
 
   async getTransaction(id: string): Promise<CircleTransaction> {
-    const data = await this.request<TransactionResponse>(
-      'GET',
-      `/v1/w3s/transactions/${encodeURIComponent(id)}`,
-    );
+    const data = await this.request<TransactionResponse>('GET', `/v1/w3s/transactions/${encodeURIComponent(id)}`);
     return data.transaction;
   }
 
@@ -197,10 +190,7 @@ export class CircleClient {
   // -- notifications ---------------------------------------------------------
 
   async getNotificationPublicKey(keyId: string): Promise<CircleNotificationPublicKey> {
-    return this.request<CircleNotificationPublicKey>(
-      'GET',
-      `/v2/notifications/publicKey/${encodeURIComponent(keyId)}`,
-    );
+    return this.request<CircleNotificationPublicKey>('GET', `/v2/notifications/publicKey/${encodeURIComponent(keyId)}`);
   }
 }
 

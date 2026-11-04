@@ -24,9 +24,9 @@ describe('WebhookSignatureVerifier', () => {
   const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
   const der = publicKey.export({ type: 'spki', format: 'der' }).toString('base64');
   let fetches = 0;
-  const verifier = new WebhookSignatureVerifier(async () => {
+  const verifier = new WebhookSignatureVerifier(() => {
     fetches++;
-    return { publicKey: der };
+    return Promise.resolve({ publicKey: der });
   });
   const body = Buffer.from('{"notificationId":"1"}');
   const sig = sign('sha256', body, privateKey).toString('base64');

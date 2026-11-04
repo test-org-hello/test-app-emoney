@@ -9,16 +9,7 @@ export type TransactionDirection = 'deposit' | 'withdrawal';
 export type TransactionStatus = 'pending' | 'completed' | 'failed';
 
 export type CircleTransactionState =
-  | 'INITIATED'
-  | 'CLEARED'
-  | 'QUEUED'
-  | 'SENT'
-  | 'STUCK'
-  | 'CONFIRMED'
-  | 'COMPLETE'
-  | 'FAILED'
-  | 'DENIED'
-  | 'CANCELLED';
+  'INITIATED' | 'CLEARED' | 'QUEUED' | 'SENT' | 'STUCK' | 'CONFIRMED' | 'COMPLETE' | 'FAILED' | 'DENIED' | 'CANCELLED';
 
 export interface Token {
   id: string;

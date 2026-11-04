@@ -1,8 +1,9 @@
-import { createClient, type PostgrestError, type SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type PostgrestError } from '@supabase/supabase-js';
 import type { Balance, Token, Transaction, User } from '@circle-wallet/shared';
 import type {
   ApplyCircleTxInput,
   BalanceApiRow,
+  DbClient,
   CreateWithdrawalInput,
   InsertUserInput,
   PendingCircleTxRow,
@@ -23,9 +24,10 @@ export class DbError extends Error {
   }
 }
 
-function check<T>(res: PostgrestResult<T>): T {
+/** Throws on a Supabase error; otherwise returns `data` as the row type the caller expects. */
+function check<T = unknown>(res: PostgrestResult): T {
   if (res.error) throw new DbError(res.error);
-  return res.data;
+  return res.data as T;
 }
 
 const toToken = (r: TokenRow): Token => ({
@@ -73,18 +75,20 @@ const toBalance = (r: BalanceApiRow): Balance => ({
 
 /** All database access of the backend. */
 export class Db {
-  readonly client: SupabaseClient;
+  readonly client: DbClient;
 
   constructor(url: string, serviceRoleKey: string) {
     this.client = createClient(url, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
-    });
+    }) as DbClient;
   }
 
   // -- settings --------------------------------------------------------------
 
   async getSetting(key: string): Promise<string | null> {
-    const row = check(await this.client.from('app_settings').select('value').eq('key', key).maybeSingle());
+    const row = check<{ value: string } | null>(
+      await this.client.from('app_settings').select('value').eq('key', key).maybeSingle(),
+    );
     return row?.value ?? null;
   }
 
@@ -93,33 +97,31 @@ export class Db {
   }
 
   async setSettingIfAbsent(key: string, value: string): Promise<string> {
-    check(
-      await this.client
-        .from('app_settings')
-        .upsert({ key, value }, { onConflict: 'key', ignoreDuplicates: true }),
-    );
+    check(await this.client.from('app_settings').upsert({ key, value }, { onConflict: 'key', ignoreDuplicates: true }));
     return (await this.getSetting(key)) ?? value;
   }
 
   // -- users -----------------------------------------------------------------
 
   async listUsers(): Promise<User[]> {
-    const rows = check(await this.client.from('users').select('*').order('created_at', { ascending: true }));
-    return (rows as UserRow[]).map(toUser);
+    const rows = check<UserRow[]>(await this.client.from('users').select('*').order('created_at', { ascending: true }));
+    return rows.map(toUser);
   }
 
   async getUser(id: string): Promise<User | null> {
-    const row = check(await this.client.from('users').select('*').eq('id', id).maybeSingle());
-    return row ? toUser(row as UserRow) : null;
+    const row = check<UserRow | null>(await this.client.from('users').select('*').eq('id', id).maybeSingle());
+    return row ? toUser(row) : null;
   }
 
   async getUserByWalletId(walletId: string): Promise<User | null> {
-    const row = check(await this.client.from('users').select('*').eq('circle_wallet_id', walletId).maybeSingle());
-    return row ? toUser(row as UserRow) : null;
+    const row = check<UserRow | null>(
+      await this.client.from('users').select('*').eq('circle_wallet_id', walletId).maybeSingle(),
+    );
+    return row ? toUser(row) : null;
   }
 
   async insertUser(u: InsertUserInput): Promise<User> {
-    const row = check(
+    const row = check<UserRow>(
       await this.client
         .from('users')
         .insert({
@@ -132,14 +134,14 @@ export class Db {
         .select('*')
         .single(),
     );
-    return toUser(row as UserRow);
+    return toUser(row);
   }
 
   // -- tokens ----------------------------------------------------------------
 
   async getToken(id: string): Promise<Token | null> {
-    const row = check(await this.client.from('tokens').select('*').eq('id', id).maybeSingle());
-    return row ? toToken(row as TokenRow) : null;
+    const row = check<TokenRow | null>(await this.client.from('tokens').select('*').eq('id', id).maybeSingle());
+    return row ? toToken(row) : null;
   }
 
   async upsertToken(t: Token): Promise<void> {
@@ -161,12 +163,12 @@ export class Db {
   // -- balances & history ----------------------------------------------------
 
   async getBalances(userId: string): Promise<Balance[]> {
-    const rows = check(await this.client.from('user_balances_api').select('*').eq('user_id', userId));
-    return (rows as BalanceApiRow[]).map(toBalance).sort((a, b) => a.token.symbol.localeCompare(b.token.symbol));
+    const rows = check<BalanceApiRow[]>(await this.client.from('user_balances_api').select('*').eq('user_id', userId));
+    return rows.map(toBalance).sort((a, b) => a.token.symbol.localeCompare(b.token.symbol));
   }
 
   async listTransactions(userId: string, limit = 100): Promise<Transaction[]> {
-    const rows = check(
+    const rows = check<TransactionApiRow[]>(
       await this.client
         .from('transactions_api')
         .select('*')
@@ -174,25 +176,25 @@ export class Db {
         .order('created_at', { ascending: false })
         .limit(limit),
     );
-    return (rows as TransactionApiRow[]).map(toTransaction);
+    return rows.map(toTransaction);
   }
 
   // -- ledger writes (all through SQL functions, see migration) --------------
 
   async createWithdrawal(p: CreateWithdrawalInput): Promise<Transaction> {
-    const rows = check(
+    const rows = check<TransactionApiRow[]>(
       await this.client.rpc('create_withdrawal', {
         p_user_id: p.userId,
         p_token_id: p.tokenId,
         p_amount: p.amount,
         p_destination: p.destination,
       }),
-    ) as TransactionApiRow[];
+    );
     return toTransaction(rows[0]!);
   }
 
   async applyCircleTransaction(i: ApplyCircleTxInput): Promise<Transaction | null> {
-    const rows = check(
+    const rows = check<TransactionApiRow[]>(
       await this.client.rpc('apply_circle_transaction', {
         p_user_id: i.userId,
         p_direction: i.direction,
@@ -206,18 +208,20 @@ export class Db {
         p_error: i.error,
         p_ref_id: i.refId,
       }),
-    ) as TransactionApiRow[];
+    );
     return rows[0] ? toTransaction(rows[0]) : null;
   }
 
   async failWithdrawal(id: string, error: string): Promise<Transaction | null> {
-    const rows = check(await this.client.rpc('fail_withdrawal', { p_id: id, p_error: error })) as TransactionApiRow[];
+    const rows = check<TransactionApiRow[]>(await this.client.rpc('fail_withdrawal', { p_id: id, p_error: error }));
     return rows[0] ? toTransaction(rows[0]) : null;
   }
 
   async getTransaction(id: string): Promise<Transaction | null> {
-    const row = check(await this.client.from('transactions_api').select('*').eq('id', id).maybeSingle());
-    return row ? toTransaction(row as TransactionApiRow) : null;
+    const row = check<TransactionApiRow | null>(
+      await this.client.from('transactions_api').select('*').eq('id', id).maybeSingle(),
+    );
+    return row ? toTransaction(row) : null;
   }
 
   async incrementSubmitAttempts(id: string, attempts: number): Promise<void> {
@@ -226,16 +230,18 @@ export class Db {
 
   /** Withdrawals reserved in the ledger but not (provably) accepted by Circle yet. */
   async listUnsubmittedWithdrawals(olderThan: Date): Promise<PendingWithdrawal[]> {
-    const rows = check(
+    const rows = check<UnsubmittedWithdrawalRow[]>(
       await this.client
         .from('transactions')
-        .select('id, user_id, token_id, amount::text, destination_address, submit_attempts, created_at, users!inner(circle_wallet_id)')
+        .select(
+          'id, user_id, token_id, amount::text, destination_address, submit_attempts, created_at, users!inner(circle_wallet_id)',
+        )
         .eq('direction', 'withdrawal')
         .eq('status', 'pending')
         .is('circle_tx_id', null)
         .lt('created_at', olderThan.toISOString())
         .limit(50),
-    ) as unknown as UnsubmittedWithdrawalRow[];
+    );
     return rows.map((r) => ({
       id: r.id,
       userId: r.user_id,
@@ -250,14 +256,14 @@ export class Db {
 
   /** Circle ids of transactions that are not final yet. */
   async listPendingCircleTxIds(limit = 100): Promise<string[]> {
-    const rows = check(
+    const rows = check<PendingCircleTxRow[]>(
       await this.client
         .from('transactions')
         .select('circle_tx_id')
         .eq('status', 'pending')
         .not('circle_tx_id', 'is', null)
         .limit(limit),
-    ) as PendingCircleTxRow[];
+    );
     return [...new Set(rows.map((r) => r.circle_tx_id))];
   }
 
@@ -268,11 +274,14 @@ export class Db {
     check(
       await this.client
         .from('webhook_events')
-        .upsert({ notification_id: id, notification_type: type, payload }, { onConflict: 'notification_id', ignoreDuplicates: true }),
+        .upsert(
+          { notification_id: id, notification_type: type, payload },
+          { onConflict: 'notification_id', ignoreDuplicates: true },
+        ),
     );
-    const row = check(
+    const row = check<WebhookProcessedRow>(
       await this.client.from('webhook_events').select('processed_at').eq('notification_id', id).single(),
-    ) as WebhookProcessedRow;
+    );
     return row.processed_at === null;
   }
 

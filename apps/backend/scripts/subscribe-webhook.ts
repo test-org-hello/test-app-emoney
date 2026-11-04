@@ -24,9 +24,7 @@ if (!baseUrl || !apiKey) {
 }
 
 const circle = new CircleClient({ baseUrl, apiKey, entitySecret: '' });
-const sub = await circle.request<NotificationSubscription>(
-  'POST',
-  '/v2/notifications/subscriptions',
-  { body: { endpoint, notificationTypes: ['transactions.inbound', 'transactions.outbound'] } },
-);
+const sub = await circle.request<NotificationSubscription>('POST', '/v2/notifications/subscriptions', {
+  body: { endpoint, notificationTypes: ['transactions.inbound', 'transactions.outbound'] },
+});
 console.log('Subscription created:', sub);

@@ -1,8 +1,15 @@
-import type { PostgrestError } from '@supabase/supabase-js';
+import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
+
+/**
+ * Untyped Supabase client: rows are described by the interfaces below instead of
+ * generated schema types, because amounts are read as text (`numeric::text`).
+ */
+export type DbClient = SupabaseClient;
 import type { Transaction, TransactionDirection } from '@circle-wallet/shared';
 
-export interface PostgrestResult<T> {
-  data: T;
+/** Any Supabase query/rpc response; `data` is typed by the caller of `check<T>()`. */
+export interface PostgrestResult {
+  data: unknown;
   error: PostgrestError | null;
 }
 

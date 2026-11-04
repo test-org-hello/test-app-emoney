@@ -1,0 +1,9 @@
+node_modules
+dist
+.next
+coverage
+pnpm-lock.yaml
+supabase/.branches
+supabase/.temp
+apps/web/next-env.d.ts
+*.md

@@ -12,11 +12,7 @@ import { UserService } from './services/users.js';
 import { WithdrawalService } from './services/withdrawals.js';
 
 /** Wires all services together. Tests can swap the Circle API (`fetchImpl`). */
-export function buildContainer(
-  config: Config,
-  log: Logger,
-  opts: ContainerOptions = {},
-) {
+export function buildContainer(config: Config, log: Logger, opts: ContainerOptions = {}) {
   const db = new Db(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY);
   const circle = new CircleClient({
     baseUrl: config.CIRCLE_BASE_URL,

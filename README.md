@@ -16,6 +16,10 @@ supabase/
 
 Монорепо на **pnpm workspaces**.
 
+Качество кода: ESLint 9 (flat config, `eslint.config.mjs`) и Prettier (`.prettierrc.json`), запуск — `pnpm lint`,
+`pnpm format`. ESLint 9, а не 10: `eslint-config-next` 16 тянет `eslint-plugin-react`, который пока поддерживает
+только ESLint ≤ 9.
+
 Соглашения по файлам:
 - типы — только в файлах `*.types.ts` рядом с модулем (`circle/circle.types.ts`, `lib/db.types.ts`,
   `components/WalletCard.types.ts`, …); контракт API — `packages/shared/src/api.types.ts`;
@@ -151,6 +155,9 @@ curl -X POST localhost:4010/_fake/deposit -H 'content-type: application/json' \
 |---|---|
 | `pnpm dev` | backend + web в watch-режиме |
 | `pnpm build` / `pnpm typecheck` | сборка / проверка типов всех пакетов |
+| `pnpm lint` / `pnpm lint:fix` | ESLint по всему монорепо (typescript-eslint с проверкой типов, Next.js, правила хуков React) |
+| `pnpm format` / `pnpm format:check` | Prettier |
+| `pnpm check` | всё сразу: формат, линтер, типы, тесты |
 | `pnpm test` | тесты (интеграционные запускаются, если задан `TEST_SUPABASE_*`, см. ниже) |
 | `pnpm db:start` / `db:stop` / `db:reset` / `db:push` | Supabase CLI |
 

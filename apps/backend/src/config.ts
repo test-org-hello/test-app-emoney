@@ -1,9 +1,7 @@
 import { z } from 'zod';
 import type { Config } from './config.types.js';
 
-const bool = z
-  .enum(['true', 'false', '1', '0'])
-  .transform((v) => v === 'true' || v === '1');
+const bool = z.enum(['true', 'false', '1', '0']).transform((v) => v === 'true' || v === '1');
 
 export const configSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
@@ -15,9 +13,7 @@ export const configSchema = z.object({
 
   CIRCLE_BASE_URL: z.url(),
   CIRCLE_API_KEY: z.string().min(1),
-  CIRCLE_ENTITY_SECRET: z
-    .string()
-    .regex(/^[0-9a-fA-F]{64}$/, 'must be a 32-byte hex string'),
+  CIRCLE_ENTITY_SECRET: z.string().regex(/^[0-9a-fA-F]{64}$/, 'must be a 32-byte hex string'),
   CIRCLE_BLOCKCHAIN: z.string().default('BASE-SEPOLIA'),
   CIRCLE_ACCOUNT_TYPE: z.enum(['SCA', 'EOA']).default('SCA'),
   CIRCLE_WALLET_SET_ID: z
@@ -32,9 +28,7 @@ export const configSchema = z.object({
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const parsed = configSchema.safeParse(env);
   if (!parsed.success) {
-    const issues = parsed.error.issues
-      .map((i) => `  - ${i.path.join('.')}: ${i.message}`)
-      .join('\n');
+    const issues = parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n');
     throw new Error(`Invalid environment configuration:\n${issues}\nSee apps/backend/.env.example`);
   }
   return parsed.data;

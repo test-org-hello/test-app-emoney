@@ -19,11 +19,14 @@ import { IconCheck, IconCopy, IconDroplet, IconExternalLink } from '@tabler/icon
 import { useQuery } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { QRCodeSVG } from 'qrcode.react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import type { Transaction } from '@circle-wallet/shared';
 import { api, queryKeys } from '@/lib/api';
 import { FAUCET_URL } from '@/lib/format';
 import { REFRESH_MS } from './WalletCard';
 import type { DepositModalProps } from './DepositModal.types';
+
+const isDeposit = (tx: Transaction) => tx.direction === 'deposit';
 
 /**
  * A deposit is an on-chain transfer *to* the user's Circle wallet address
@@ -33,10 +36,6 @@ import type { DepositModalProps } from './DepositModal.types';
 export function DepositModal({ user, opened, onClose }: DepositModalProps) {
   const t = useTranslations('deposit');
   const tc = useTranslations('common');
-  const [openedAt, setOpenedAt] = useState(() => Date.now());
-  useEffect(() => {
-    if (opened) setOpenedAt(Date.now());
-  }, [opened]);
 
   const txs = useQuery({
     queryKey: queryKeys.transactions(user.id),
@@ -44,7 +43,16 @@ export function DepositModal({ user, opened, onClose }: DepositModalProps) {
     refetchInterval: REFRESH_MS,
     enabled: opened,
   });
-  const received = (txs.data ?? []).find((t) => t.direction === 'deposit' && Date.parse(t.createdAt) >= openedAt - 5_000);
+
+  // Deposits that already existed when the dialog was opened. "New" means "not in this set".
+  // Comparing ids instead of timestamps: server and browser clocks may differ by minutes.
+  const [baseline, setBaseline] = useState<ReadonlySet<string> | null>(null);
+  if (opened && baseline === null && txs.data) {
+    setBaseline(new Set(txs.data.filter(isDeposit).map((tx) => tx.id)));
+  } else if (!opened && baseline !== null) {
+    setBaseline(null);
+  }
+  const received = baseline ? txs.data?.find((tx) => isDeposit(tx) && !baseline.has(tx.id)) : undefined;
 
   return (
     <Modal opened={opened} onClose={onClose} title={t('title')} size="lg">

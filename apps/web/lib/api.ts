@@ -47,8 +47,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(req),
     }).then((r) => r.data),
-  sync: (id: string) =>
-    call<ItemResponse<SyncResult>>(`/api/users/${id}/sync`, { method: 'POST' }).then((r) => r.data),
+  sync: (id: string) => call<ItemResponse<SyncResult>>(`/api/users/${id}/sync`, { method: 'POST' }).then((r) => r.data),
 };
 
 export const queryKeys = {
