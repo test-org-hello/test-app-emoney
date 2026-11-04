@@ -7,6 +7,7 @@ import type {
   User,
   UserDetails,
 } from '@circle-wallet/shared';
+import { supabase } from './supabase';
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000').replace(/\/+$/, '');
 
@@ -21,16 +22,28 @@ export class ApiRequestError extends Error {
 }
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
+  // getSession() returns the cached session and refreshes the token if it expired.
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+
   let res: Response;
   try {
     res = await fetch(`${API_URL}${path}`, {
       ...init,
-      headers: { 'Content-Type': 'application/json', ...init?.headers },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...init?.headers,
+      },
     });
   } catch {
     throw new ApiRequestError(0, 'network_error', `Бэкенд недоступен (${API_URL})`);
   }
   const body = (await res.json().catch(() => null)) as unknown;
+  if (res.status === 401) {
+    // Session is gone or revoked on the server: drop it locally, the AuthGate shows the login form.
+    await supabase.auth.signOut({ scope: 'local' });
+  }
   if (!res.ok) {
     const err = (body as ApiError | null)?.error;
     throw new ApiRequestError(res.status, err?.code ?? 'unknown', err?.message ?? res.statusText);

@@ -4,6 +4,7 @@ import { MantineProvider, createTheme } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
+import { AuthGate } from '@/components/AuthGate';
 
 const theme = createTheme({
   primaryColor: 'indigo',
@@ -22,7 +23,7 @@ export function Providers({ children }: { children: ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <MantineProvider theme={theme} defaultColorScheme="auto">
         <Notifications position="top-right" />
-        {children}
+        <AuthGate>{children}</AuthGate>
       </MantineProvider>
     </QueryClientProvider>
   );

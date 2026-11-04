@@ -84,11 +84,11 @@ export function TransactionsTable({ userId }: { userId: string }) {
         <Title order={4}>История операций</Title>
         {txs.isFetching && <Loader size="xs" />}
       </Group>
-      {txs.isLoading ? (
-        <Loader />
-      ) : txs.isError ? (
+      {txs.isError ? (
         <Text c="red">{txs.error.message}</Text>
-      ) : txs.data!.length === 0 ? (
+      ) : !txs.data ? (
+        <Loader />
+      ) : txs.data.length === 0 ? (
         <Text c="dimmed" size="sm">
           Операций пока нет.
         </Text>
@@ -107,7 +107,7 @@ export function TransactionsTable({ userId }: { userId: string }) {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {txs.data!.map((tx) => (
+              {txs.data.map((tx) => (
                 <Row key={tx.id} tx={tx} />
               ))}
             </Table.Tbody>

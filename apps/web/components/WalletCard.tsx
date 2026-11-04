@@ -2,7 +2,6 @@
 
 import {
   ActionIcon,
-  Anchor,
   Button,
   Card,
   Code,
@@ -16,16 +15,19 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconCheck, IconCopy, IconExternalLink, IconRefresh } from '@tabler/icons-react';
+import { useDisclosure } from '@mantine/hooks';
+import { IconCheck, IconCopy, IconExternalLink, IconPlus, IconRefresh } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { api, ApiRequestError, queryKeys } from '@/lib/api';
-import { addressExplorerUrl, FAUCET_URL } from '@/lib/format';
+import { addressExplorerUrl } from '@/lib/format';
+import { DepositModal } from './DepositModal';
 
 export const REFRESH_MS = 4000;
 
 export function WalletCard({ userId, onMissing }: { userId: string; onMissing: () => void }) {
   const qc = useQueryClient();
+  const [depositOpened, deposit] = useDisclosure(false);
   const user = useQuery({
     queryKey: queryKeys.user(userId),
     queryFn: () => api.getUser(userId),
@@ -77,30 +79,32 @@ export function WalletCard({ userId, onMissing }: { userId: string; onMissing: (
               </Tooltip>
             )}
           </Group>
-          <Text size="sm">
-            Тестовые USDC:{' '}
-            <Anchor href={FAUCET_URL} target="_blank">
-              faucet.circle.com
-            </Anchor>{' '}
-            → сеть Base Sepolia → вставьте адрес выше.
-          </Text>
         </Stack>
-        <Button
-          variant="default"
-          leftSection={<IconRefresh size={16} />}
-          loading={sync.isPending}
-          onClick={() => sync.mutate()}
-        >
-          Синхронизировать с Circle
-        </Button>
+        <Group gap="xs">
+          <Button leftSection={<IconPlus size={16} />} onClick={deposit.open}>
+            Пополнить
+          </Button>
+          <Tooltip label="Подтянуть операции из Circle, не дожидаясь вебхука">
+            <Button
+              variant="default"
+              leftSection={<IconRefresh size={16} />}
+              loading={sync.isPending}
+              onClick={() => sync.mutate()}
+            >
+              Синхронизировать
+            </Button>
+          </Tooltip>
+        </Group>
       </Group>
+
+      <DepositModal user={u} opened={depositOpened} onClose={deposit.close} />
 
       <Title order={5} mt="lg" mb="xs">
         Баланс
       </Title>
       {u.balances.length === 0 ? (
         <Text c="dimmed" size="sm">
-          Пока пусто — пополните кошелёк. Пополнение появится после вебхука от Circle.
+          Пока пусто. Нажмите «Пополнить», чтобы получить адрес и тестовые USDC.
         </Text>
       ) : (
         <Table withTableBorder={false} verticalSpacing="xs" maw={560}>

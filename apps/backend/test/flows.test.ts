@@ -4,14 +4,16 @@
  *
  *   TEST_SUPABASE_URL=http://127.0.0.1:54321 TEST_SUPABASE_SERVICE_ROLE_KEY=... pnpm --filter @circle-wallet/backend test
  *
- * Skipped when those variables are not set.
+ * Skipped when those variables are not set. The tests may share the database
+ * with a dev setup, so they remove everything they created in afterAll.
  */
 import { pino } from 'pino';
 import request from 'supertest';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Transaction, User, UserDetails } from '@circle-wallet/shared';
 import { loadConfig } from '../src/config.js';
 import { buildContainer } from '../src/container.js';
+import { supabaseAuthVerifier } from '../src/lib/auth.js';
 import { FakeCircle } from './fakeCircle.js';
 
 const url = process.env.TEST_SUPABASE_URL;
@@ -20,16 +22,19 @@ const key = process.env.TEST_SUPABASE_SERVICE_ROLE_KEY;
 describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
   const circle = new FakeCircle();
   let c: ReturnType<typeof buildContainer>;
-  let api: ReturnType<typeof request>;
+  let api: ReturnType<typeof request.agent>;
+  let anon: ReturnType<typeof request>;
   let alice: User;
   const external = '0x' + '1'.repeat(40);
+  const authUserIds: string[] = [];
+  let savedCursor: string | null = null;
 
   const details = async (id: string) => (await api.get(`/api/users/${id}`).expect(200)).body.data as UserDetails;
   const history = async (id: string) =>
     (await api.get(`/api/users/${id}/transactions`).expect(200)).body.data as Transaction[];
   const usdc = (d: UserDetails) => d.balances.find((b) => b.token.symbol === 'USDC');
   const deliver = (wh: { body: string; headers: Record<string, string> }) =>
-    api.post('/webhooks/circle').set(wh.headers).send(wh.body);
+    anon.post('/webhooks/circle').set(wh.headers).send(wh.body);
 
   beforeAll(async () => {
     const config = loadConfig({
@@ -40,8 +45,50 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
       CIRCLE_ENTITY_SECRET: circle.entitySecret,
       RECONCILE_INTERVAL_MS: '0',
     });
-    c = buildContainer(config, pino({ level: 'silent' }), { fetchImpl: circle.fetch });
-    api = request(c.app);
+    c = buildContainer(config, pino({ level: 'silent' }), {
+      fetchImpl: circle.fetch,
+      authVerifier: async (token) => (token === 'test-token' ? { id: 'test-user', email: 'test@example.com' } : null),
+    });
+    anon = request(c.app);
+    api = request.agent(c.app).set('Authorization', 'Bearer test-token');
+    savedCursor = await c.db.getSetting('reconcile_cursor');
+  });
+
+  afterAll(async () => {
+    if (!c) return;
+    const walletIds = [...circle.wallets.keys()];
+    if (walletIds.length) await c.db.client.from('users').delete().in('circle_wallet_id', walletIds);
+    await c.db.client.from('tokens').delete().eq('id', circle.usdc.id);
+    await c.db.client.from('webhook_events').delete().in('payload->notification->>walletId', walletIds);
+    if (savedCursor) await c.db.setSetting('reconcile_cursor', savedCursor);
+    else await c.db.client.from('app_settings').delete().eq('key', 'reconcile_cursor');
+    for (const id of authUserIds) await c.db.client.auth.admin.deleteUser(id);
+  });
+
+  it('accepts real Supabase Auth access tokens and rejects bad ones', async () => {
+    const email = `test-${Date.now()}@example.com`;
+    const created = await c.db.client.auth.admin.createUser({ email, password: 'secret123', email_confirm: true });
+    expect(created.error).toBeNull();
+    authUserIds.push(created.data.user!.id);
+
+    const { createClient } = await import('@supabase/supabase-js');
+    const browserLike = createClient(url!, key!, { auth: { persistSession: false, autoRefreshToken: false } });
+    const session = await browserLike.auth.signInWithPassword({ email, password: 'secret123' });
+    expect(session.error).toBeNull();
+
+    const verify = supabaseAuthVerifier(c.db.client);
+    expect(await verify(session.data.session!.access_token)).toEqual({ id: created.data.user!.id, email });
+    expect(await verify('not-a-jwt')).toBeNull();
+  });
+
+  it('requires a signed-in user for the API, but not for webhooks/health', async () => {
+    const res = await anon.get('/api/users').expect(401);
+    expect(res.body.error.code).toBe('unauthorized');
+    await anon.get('/api/users').set('Authorization', 'Bearer wrong').expect(401);
+    await anon.get('/health').expect(200);
+    await anon.head('/webhooks/circle').expect(200);
+    const me = await api.get('/api/me').expect(200);
+    expect(me.body.data).toEqual({ id: 'test-user', email: 'test@example.com' });
   });
 
   it('creates a user with its own Circle wallet / deposit address', async () => {
@@ -57,7 +104,7 @@ describe.skipIf(!url || !key)('wallet flows (Supabase + fake Circle)', () => {
   it('rejects webhooks with a bad signature', async () => {
     const tx = circle.addTx({ walletId: alice.circleWalletId, transactionType: 'INBOUND', state: 'COMPLETE', amounts: ['1'] });
     const wh = circle.webhook(tx);
-    await api.post('/webhooks/circle').set({ ...wh.headers, 'X-Circle-Signature': 'AAAA' }).send(wh.body).expect(401);
+    await anon.post('/webhooks/circle').set({ ...wh.headers, 'X-Circle-Signature': 'AAAA' }).send(wh.body).expect(401);
     circle.txs.delete(tx.id);
   });
 

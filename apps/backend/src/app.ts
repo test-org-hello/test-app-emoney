@@ -5,6 +5,7 @@ import { ZodError } from 'zod';
 import type { ApiError } from '@circle-wallet/shared';
 import { CircleApiError, type CircleClient } from './circle/client.js';
 import type { WebhookSignatureVerifier } from './circle/webhookSignature.js';
+import { requireAuth, type AuthVerifier } from './lib/auth.js';
 import type { Db } from './lib/db.js';
 import { HttpError } from './lib/errors.js';
 import type { Logger } from './lib/logger.js';
@@ -23,6 +24,8 @@ export interface AppDeps {
   withdrawals: WithdrawalService;
   reconciler: Reconciler;
   verifier: WebhookSignatureVerifier;
+  /** Resolves Supabase Auth access tokens; every /api route requires one. */
+  authVerifier: AuthVerifier;
   log: Logger;
   corsOrigin: string;
   verifyWebhookSignature: boolean;
@@ -31,6 +34,8 @@ export interface AppDeps {
 export function createApp(deps: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
+  // Responses are per-session and polled; no ETag/304 revalidation from the browser cache.
+  app.set('etag', false);
   app.use(pinoHttp({ logger: deps.log, autoLogging: { ignore: (req) => req.method === 'GET' } }));
 
   // Webhooks first: they need the raw body for signature verification.
@@ -50,6 +55,9 @@ export function createApp(deps: AppDeps) {
   app.use(express.json({ limit: '100kb' }));
 
   app.get('/health', (_req, res) => void res.json({ ok: true }));
+  // Webhooks (signed by Circle) and /health stay public; the app API needs a signed-in user.
+  app.use('/api', requireAuth(deps.authVerifier));
+  app.get('/api/me', (_req, res) => void res.json({ data: res.locals.authUser }));
   app.use('/api/users', usersRouter(deps));
 
   app.use((_req, res) => {

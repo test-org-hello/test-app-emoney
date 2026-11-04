@@ -4,6 +4,7 @@ import { Alert, AppShell, Badge, Container, Group, Stack, Text, Title } from '@m
 import { IconInfoCircle, IconWallet } from '@tabler/icons-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback } from 'react';
+import { AccountMenu } from '@/components/AuthGate';
 import { TransactionsTable } from '@/components/TransactionsTable';
 import { UserPicker } from '@/components/UserPicker';
 import { WalletCard } from '@/components/WalletCard';
@@ -31,7 +32,10 @@ function Home() {
                 BASE-SEPOLIA testnet
               </Badge>
             </Group>
-            <UserPicker value={userId} onChange={selectUser} />
+            <Group gap="md" wrap="nowrap">
+              <UserPicker value={userId} onChange={selectUser} />
+              <AccountMenu />
+            </Group>
           </Group>
         </Container>
       </AppShell.Header>
