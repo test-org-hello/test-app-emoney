@@ -39,7 +39,9 @@ export function UserPicker({ value, onChange }: UserPickerProps) {
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (name.trim()) create.mutate(name.trim());
+    if (name.trim()) {
+      create.mutate(name.trim());
+    }
   };
 
   return (

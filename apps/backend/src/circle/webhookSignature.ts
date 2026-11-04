@@ -16,7 +16,9 @@ export class WebhookSignatureVerifier {
   constructor(private readonly fetchPublicKey: NotificationPublicKeyFetcher) {}
 
   async verify(rawBody: Buffer, signatureB64: string | undefined, keyId: string | undefined): Promise<boolean> {
-    if (!signatureB64 || !keyId) return false;
+    if (!signatureB64 || !keyId) {
+      return false;
+    }
 
     let key = this.cache.get(keyId);
     if (!key) {

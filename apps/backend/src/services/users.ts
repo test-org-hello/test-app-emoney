@@ -29,7 +29,9 @@ export class UserService {
 
   async get(id: string): Promise<User> {
     const user = await this.db.getUser(id);
-    if (!user) throw notFound('User');
+    if (!user) {
+      throw notFound('User');
+    }
     return user;
   }
 
@@ -64,7 +66,9 @@ export class UserService {
   }
 
   private getWalletSetId(): Promise<string> {
-    if (this.config.CIRCLE_WALLET_SET_ID) return Promise.resolve(this.config.CIRCLE_WALLET_SET_ID);
+    if (this.config.CIRCLE_WALLET_SET_ID) {
+      return Promise.resolve(this.config.CIRCLE_WALLET_SET_ID);
+    }
     this.walletSetId ??= this.resolveWalletSetId().catch((e) => {
       this.walletSetId = undefined;
       throw e;
@@ -74,7 +78,9 @@ export class UserService {
 
   private async resolveWalletSetId(): Promise<string> {
     const stored = await this.db.getSetting(WALLET_SET_SETTING);
-    if (stored) return stored;
+    if (stored) {
+      return stored;
+    }
     const set = await this.circle.createWalletSet('circle-wallet-app');
     this.log.info({ walletSetId: set.id }, 'circle wallet set created');
     return this.db.setSettingIfAbsent(WALLET_SET_SETTING, set.id);

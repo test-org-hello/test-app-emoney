@@ -9,12 +9,16 @@ const isLocale = (v: string | undefined): v is Locale => !!v && (locales as read
 /** Cookie first, then the browser's Accept-Language, then the default (ru). */
 async function resolveLocale(): Promise<Locale> {
   const fromCookie = (await cookies()).get(LOCALE_COOKIE)?.value;
-  if (isLocale(fromCookie)) return fromCookie;
+  if (isLocale(fromCookie)) {
+    return fromCookie;
+  }
 
   const accept = (await headers()).get('accept-language') ?? '';
   for (const part of accept.split(',')) {
     const lang = part.trim().slice(0, 2).toLowerCase();
-    if (isLocale(lang)) return lang;
+    if (isLocale(lang)) {
+      return lang;
+    }
   }
   return defaultLocale;
 }

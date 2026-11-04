@@ -23,7 +23,9 @@ export class TokenService {
 
   private async load(tokenId: string): Promise<Token> {
     const existing = await this.db.getToken(tokenId);
-    if (existing) return existing;
+    if (existing) {
+      return existing;
+    }
 
     const t = await this.circle.getToken(tokenId);
     const token: Token = {

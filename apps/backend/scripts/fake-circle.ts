@@ -44,7 +44,9 @@ async function progress(id: string, states: CircleTransaction['state'][]) {
 
 async function handle(req: IncomingMessage, res: ServerResponse) {
   const chunks: Buffer[] = [];
-  for await (const c of req) chunks.push(c as Buffer);
+  for await (const c of req) {
+    chunks.push(c as Buffer);
+  }
   const body = Buffer.concat(chunks).toString();
 
   if (req.method === 'POST' && req.url === '/_fake/deposit') {

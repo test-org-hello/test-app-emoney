@@ -20,7 +20,9 @@ export class LedgerService {
   ) {}
 
   async apply(tx: CircleTransaction): Promise<Transaction | null> {
-    if (tx.operation && tx.operation !== 'TRANSFER') return null;
+    if (tx.operation && tx.operation !== 'TRANSFER') {
+      return null;
+    }
     if (!tx.walletId || !tx.tokenId || !tx.amounts?.[0]) {
       this.log.debug({ circleTxId: tx.id }, 'skip circle tx without wallet/token/amount');
       return null;

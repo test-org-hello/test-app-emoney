@@ -32,6 +32,8 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
     body = { error: { code: 'bad_request', message: 'Malformed JSON' } };
   }
 
-  if (status >= 500) req.log.error({ err }, 'request failed');
+  if (status >= 500) {
+    req.log.error({ err }, 'request failed');
+  }
   res.status(status).json(body);
 };

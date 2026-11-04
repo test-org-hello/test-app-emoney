@@ -61,7 +61,9 @@ export class CircleClient {
   async request<T>(method: string, path: string, init: CircleRequestInit = {}): Promise<T> {
     const url = new URL(this.baseUrl + path);
     for (const [k, v] of Object.entries(init.query ?? {})) {
-      if (v !== undefined && v !== '') url.searchParams.set(k, String(v));
+      if (v !== undefined && v !== '') {
+        url.searchParams.set(k, String(v));
+      }
     }
 
     const res = await this.fetchImpl(url, {
@@ -133,7 +135,9 @@ export class CircleClient {
       },
     });
     const wallet = data.wallets[0];
-    if (!wallet) throw new Error('Circle returned no wallet');
+    if (!wallet) {
+      throw new Error('Circle returned no wallet');
+    }
     return wallet;
   }
 
@@ -177,7 +181,9 @@ export class CircleClient {
       });
       const txs = data.transactions ?? [];
       yield* txs;
-      if (txs.length < 50) return;
+      if (txs.length < 50) {
+        return;
+      }
       pageAfter = txs[txs.length - 1]!.id;
     }
   }

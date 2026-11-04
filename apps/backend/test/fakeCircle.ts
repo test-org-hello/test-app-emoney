@@ -61,14 +61,18 @@ export class FakeCircle {
       });
     }
 
-    if (method === 'POST') this.assertCiphertext(body.entitySecretCiphertext);
+    if (method === 'POST') {
+      this.assertCiphertext(body.entitySecretCiphertext);
+    }
 
     if (method === 'POST' && path === '/v1/w3s/developer/walletSets') {
       return json(201, { data: { walletSet: { id: randomUUID() } } });
     }
     if (method === 'POST' && path === '/v1/w3s/developer/wallets') {
       const cached = this.idempotency.get(key);
-      if (cached) return json(200, cached);
+      if (cached) {
+        return json(200, cached);
+      }
       const wallet: CircleWallet = {
         id: randomUUID(),
         address: '0x' + randomUUID().replace(/-/g, '').padEnd(40, '0').slice(0, 40),
@@ -91,9 +95,13 @@ export class FakeCircle {
         return json(status, { code: 155201, message: 'simulated failure' });
       }
       const cached = this.idempotency.get(key);
-      if (cached) return json(200, cached);
+      if (cached) {
+        return json(200, cached);
+      }
       const wallet = this.wallets.get(body.walletId ?? '');
-      if (!wallet) return json(404, { code: 404, message: 'wallet not found' });
+      if (!wallet) {
+        return json(404, { code: 404, message: 'wallet not found' });
+      }
       const tx = this.addTx({
         walletId: wallet.id,
         transactionType: 'OUTBOUND',
@@ -169,12 +177,16 @@ export class FakeCircle {
   }
 
   private assertCiphertext(ciphertext: string | undefined) {
-    if (!ciphertext) throw new Error('fake circle: missing entitySecretCiphertext');
+    if (!ciphertext) {
+      throw new Error('fake circle: missing entitySecretCiphertext');
+    }
     const plain = privateDecrypt(
       { key: this.rsa.privateKey, padding: constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
       Buffer.from(ciphertext, 'base64'),
     ).toString('hex');
-    if (plain !== this.entitySecret) throw new Error('fake circle: wrong entity secret');
+    if (plain !== this.entitySecret) {
+      throw new Error('fake circle: wrong entity secret');
+    }
   }
 }
 

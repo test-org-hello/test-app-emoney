@@ -8,7 +8,9 @@ import { ApiRequestError } from './api-error';
 export function useErrorMessage() {
   const t = useTranslations('errors');
   return (e: unknown): string => {
-    if (e instanceof ApiRequestError && t.has(e.code as never)) return t(e.code as never);
+    if (e instanceof ApiRequestError && t.has(e.code as never)) {
+      return t(e.code as never);
+    }
     return e instanceof Error ? e.message : String(e);
   };
 }

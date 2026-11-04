@@ -37,6 +37,8 @@ export default tseslint.config(
       // Fire-and-forget is explicit with `void`; the rest must be awaited or handled.
       '@typescript-eslint/no-floating-promises': ['error', { ignoreVoid: true }],
       '@typescript-eslint/no-misused-promises': ['error', { checksVoidReturn: { attributes: false } }],
+      // One import statement per module (types included, via inline `type` specifiers).
+      'no-duplicate-imports': ['error', { includeExports: true }],
     },
   },
 
@@ -64,6 +66,10 @@ export default tseslint.config(
     settings: { next: { rootDir: 'apps/web' } },
   },
 
-  // Must be last: disables rules that conflict with Prettier.
+  // Disables rules that conflict with Prettier.
   prettier,
+
+  // Re-enabled after eslint-config-prettier (it turns `curly` off; 'all' does not conflict with Prettier):
+  // braces on every if/else/for, no one-line `if (x) throw ...` that Prettier then splits over two lines.
+  { rules: { curly: ['error', 'all'] } },
 );

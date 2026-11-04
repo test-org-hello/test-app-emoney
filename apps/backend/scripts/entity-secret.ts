@@ -47,8 +47,12 @@ try {
   const err = e as Error & { cause?: { code?: string; message?: string } };
   const cause = err.cause ? ` (${err.cause.code ?? err.cause.message})` : '';
   console.error(`Registration failed: ${err.message}${cause}`);
-  if (err.message === 'fetch failed') console.error(`Cannot reach ${baseUrl} - check CIRCLE_BASE_URL and network.`);
-  if (existing) process.exit(1);
+  if (err.message === 'fetch failed') {
+    console.error(`Cannot reach ${baseUrl} - check CIRCLE_BASE_URL and network.`);
+  }
+  if (existing) {
+    process.exit(1);
+  }
   console.error('(If a secret is already registered for this entity, reuse it or reset it in the Circle console.)');
   process.exit(1);
 }

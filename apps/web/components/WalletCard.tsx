@@ -41,7 +41,9 @@ export function WalletCard({ userId, onMissing }: WalletCardProps) {
   });
 
   useEffect(() => {
-    if (user.error instanceof ApiRequestError && user.error.status === 404) onMissing();
+    if (user.error instanceof ApiRequestError && user.error.status === 404) {
+      onMissing();
+    }
   }, [user.error, onMissing]);
 
   const sync = useMutation({
@@ -53,8 +55,12 @@ export function WalletCard({ userId, onMissing }: WalletCardProps) {
     onError: (e) => notifications.show({ color: 'red', title: t('syncFailed'), message: errorMessage(e) }),
   });
 
-  if (user.isLoading) return <Loader />;
-  if (!user.data) return <Text c="red">{user.error ? errorMessage(user.error) : tc('loadError')}</Text>;
+  if (user.isLoading) {
+    return <Loader />;
+  }
+  if (!user.data) {
+    return <Text c="red">{user.error ? errorMessage(user.error) : tc('loadError')}</Text>;
+  }
   const u = user.data;
   const explorer = addressExplorerUrl(u.blockchain, u.address);
 

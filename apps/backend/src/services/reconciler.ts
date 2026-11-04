@@ -30,7 +30,9 @@ export class Reconciler {
   ) {}
 
   start(intervalMs: number): void {
-    if (intervalMs <= 0) return;
+    if (intervalMs <= 0) {
+      return;
+    }
     const tick = () => void this.runOnce().catch((e) => this.log.error({ err: e }, 'reconcile failed'));
     this.timer = setInterval(tick, intervalMs);
     this.timer.unref();
@@ -42,7 +44,9 @@ export class Reconciler {
   }
 
   async runOnce(): Promise<void> {
-    if (this.running) return;
+    if (this.running) {
+      return;
+    }
     this.running = true;
     try {
       await this.resubmitStuckWithdrawals();
@@ -57,7 +61,9 @@ export class Reconciler {
   async syncWallet(walletId: string): Promise<number> {
     let n = 0;
     for await (const tx of this.circle.listTransactions({ walletIds: [walletId] })) {
-      if (await this.ledger.apply(tx)) n++;
+      if (await this.ledger.apply(tx)) {
+        n++;
+      }
     }
     return n;
   }
