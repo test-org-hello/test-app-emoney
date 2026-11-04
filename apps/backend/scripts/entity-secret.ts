@@ -23,6 +23,11 @@ if (!baseUrl || !apiKey) {
 }
 
 const existing = process.env.CIRCLE_ENTITY_SECRET;
+if (existing && /^(ab)+$/i.test(existing)) {
+  console.error('CIRCLE_ENTITY_SECRET is the fake-circle mock value. Clear it in .env so a real one is generated.');
+  process.exit(1);
+}
+console.log(`Circle API: ${baseUrl}`);
 const entitySecret = existing && /^[0-9a-f]{64}$/i.test(existing) ? existing : randomBytes(32).toString('hex');
 
 const circle = new CircleClient({ baseUrl, apiKey, entitySecret });
@@ -38,7 +43,10 @@ try {
   }
   console.log('Entity secret registered.');
 } catch (e) {
-  console.error(`Registration failed: ${(e as Error).message}`);
+  const err = e as Error & { cause?: { code?: string; message?: string } };
+  const cause = err.cause ? ` (${err.cause.code ?? err.cause.message})` : '';
+  console.error(`Registration failed: ${err.message}${cause}`);
+  if (err.message === 'fetch failed') console.error(`Cannot reach ${baseUrl} - check CIRCLE_BASE_URL and network.`);
   if (existing) process.exit(1);
   console.error('(If a secret is already registered for this entity, reuse it or reset it in the Circle console.)');
   process.exit(1);
