@@ -1,6 +1,5 @@
 import express from 'express';
 import type { AppDeps } from './app.types.js';
-import { requireAuth } from './middleware/auth.middleware.js';
 import { corsMiddleware } from './middleware/cors.middleware.js';
 import { errorHandler, notFoundHandler } from './middleware/error.middleware.js';
 import { requestLogger } from './middleware/request-logger.middleware.js';
@@ -10,7 +9,7 @@ import { webhooksRouter } from './routes/webhooks.js';
 export function createApp(deps: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
-  // Responses are per-session and polled; no ETag/304 revalidation from the browser cache.
+  // The UI polls these endpoints; always return fresh data instead of ETag/304 revalidation.
   app.set('etag', false);
   app.use(requestLogger(deps.log));
 
@@ -32,9 +31,6 @@ export function createApp(deps: AppDeps) {
 
   app.get('/health', (_req, res) => void res.json({ ok: true }));
 
-  // Everything under /api requires a signed-in Supabase user.
-  app.use('/api', requireAuth(deps.authVerifier));
-  app.get('/api/me', (_req, res) => void res.json({ data: res.locals.authUser }));
   app.use('/api/users', usersRouter(deps));
 
   app.use(notFoundHandler);

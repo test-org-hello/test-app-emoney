@@ -3,22 +3,28 @@ import '@mantine/notifications/styles.css';
 
 import { ColorSchemeScript, mantineHtmlProps } from '@mantine/core';
 import type { Metadata } from 'next';
+import { NextIntlClientProvider } from 'next-intl';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { Providers } from './providers';
 import type { WithChildren } from './app.types';
 
-export const metadata: Metadata = {
-  title: 'Circle Wallet',
-  description: 'Тестовый криптокошелёк на Circle Developer-Controlled Wallets (Base Sepolia)',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations();
+  return { title: t('common.appName'), description: t('meta.description') };
+}
 
-export default function RootLayout({ children }: WithChildren) {
+export default async function RootLayout({ children }: WithChildren) {
+  const locale = await getLocale();
   return (
-    <html lang="ru" {...mantineHtmlProps}>
+    <html lang={locale} {...mantineHtmlProps}>
       <head>
         <ColorSchemeScript defaultColorScheme="auto" />
       </head>
       <body>
-        <Providers>{children}</Providers>
+        {/* v4: locale and messages are passed to client components automatically. */}
+        <NextIntlClientProvider>
+          <Providers>{children}</Providers>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

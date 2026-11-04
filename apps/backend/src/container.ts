@@ -3,7 +3,6 @@ import type { AppDeps, ContainerOptions } from './app.types.js';
 import { CircleClient } from './circle/client.js';
 import { WebhookSignatureVerifier } from './circle/webhookSignature.js';
 import type { Config } from './config.types.js';
-import { supabaseAuthVerifier } from './lib/auth.js';
 import { Db } from './lib/db.js';
 import type { Logger } from './lib/logger.types.js';
 import { LedgerService } from './services/ledger.js';
@@ -12,7 +11,7 @@ import { TokenService } from './services/tokens.js';
 import { UserService } from './services/users.js';
 import { WithdrawalService } from './services/withdrawals.js';
 
-/** Wires all services together. Tests can swap the Circle API (`fetchImpl`) and the auth check. */
+/** Wires all services together. Tests can swap the Circle API (`fetchImpl`). */
 export function buildContainer(
   config: Config,
   log: Logger,
@@ -40,7 +39,6 @@ export function buildContainer(
     withdrawals,
     reconciler,
     verifier,
-    authVerifier: opts.authVerifier ?? supabaseAuthVerifier(db.client),
     log,
     corsOrigin: config.CORS_ORIGIN,
     verifyWebhookSignature: config.CIRCLE_WEBHOOK_VERIFY_SIGNATURE,

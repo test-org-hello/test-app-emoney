@@ -11,5 +11,6 @@ export interface TransactionRowProps {
 /** How a ledger status is shown in the table. */
 export interface StatusBadge {
   color: string;
-  label: string;
+  /** Key in the `history` messages namespace. */
+  labelKey: 'statusPending' | 'statusCompleted' | 'statusFailed';
 }

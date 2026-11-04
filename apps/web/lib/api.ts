@@ -10,7 +10,6 @@ import type {
 } from '@circle-wallet/shared';
 import { ApiRequestError } from './api-error';
 import type { FetchHandler, FetchMiddleware } from './http.types';
-import { authMiddleware } from './middleware/auth.middleware';
 import { jsonMiddleware } from './middleware/json.middleware';
 import { networkMiddleware } from './middleware/network.middleware';
 
@@ -18,8 +17,8 @@ export { ApiRequestError };
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000').replace(/\/+$/, '');
 
-/** Applied outermost first: network errors wrap everything, auth sits closest to fetch. */
-const middleware: FetchMiddleware[] = [networkMiddleware, jsonMiddleware, authMiddleware];
+/** Applied outermost first: network errors wrap everything else. */
+const middleware: FetchMiddleware[] = [networkMiddleware, jsonMiddleware];
 
 const send: FetchHandler = middleware.reduceRight<FetchHandler>(
   (next, mw) => (url, init) => mw(url, init, next),

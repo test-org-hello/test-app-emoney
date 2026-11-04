@@ -6,6 +6,6 @@ export const networkMiddleware: FetchMiddleware = async (url, init, next) => {
   try {
     return await next(url, init);
   } catch {
-    throw new ApiRequestError(0, 'network_error', `Бэкенд недоступен (${new URL(url).origin})`);
+    throw new ApiRequestError(0, 'network_error', `Backend unreachable (${new URL(url).origin})`);
   }
 };

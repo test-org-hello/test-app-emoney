@@ -5,12 +5,16 @@ import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { IconUserPlus } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { useState, type FormEvent } from 'react';
+import { useErrorMessage } from '@/lib/errors';
 import { api, queryKeys } from '@/lib/api';
 import { shortAddress } from '@/lib/format';
 import type { UserPickerProps } from './UserPicker.types';
 
 export function UserPicker({ value, onChange }: UserPickerProps) {
+  const t = useTranslations('userPicker');
+  const errorMessage = useErrorMessage();
   const qc = useQueryClient();
   const [opened, { open, close }] = useDisclosure(false);
   const [name, setName] = useState('');
@@ -21,12 +25,16 @@ export function UserPicker({ value, onChange }: UserPickerProps) {
     mutationFn: (n: string) => api.createUser(n),
     onSuccess: async (user) => {
       await qc.invalidateQueries({ queryKey: queryKeys.users });
-      notifications.show({ color: 'green', title: 'Пользователь создан', message: `Адрес: ${user.address}` });
+      notifications.show({
+        color: 'green',
+        title: t('created'),
+        message: t('createdMessage', { address: user.address }),
+      });
       setName('');
       close();
       onChange(user.id);
     },
-    onError: (e) => notifications.show({ color: 'red', title: 'Не удалось создать пользователя', message: e.message }),
+    onError: (e) => notifications.show({ color: 'red', title: t('createFailed'), message: errorMessage(e) }),
   });
 
   const submit = (e: FormEvent) => {
@@ -38,24 +46,24 @@ export function UserPicker({ value, onChange }: UserPickerProps) {
     <Group gap="xs">
       <Select
         w={280}
-        placeholder={users.isLoading ? 'Загрузка…' : 'Выберите пользователя'}
+        placeholder={users.isLoading ? t('loading') : t('placeholder')}
         data={(users.data ?? []).map((u) => ({ value: u.id, label: `${u.name} · ${shortAddress(u.address, 4)}` }))}
         value={value}
         onChange={onChange}
         searchable
-        nothingFoundMessage="Нет пользователей"
-        error={users.isError ? users.error.message : undefined}
+        nothingFoundMessage={t('nothingFound')}
+        error={users.isError ? errorMessage(users.error) : undefined}
         allowDeselect={false}
       />
       <Button leftSection={<IconUserPlus size={16} />} variant="light" onClick={open}>
-        Новый
+        {t('new')}
       </Button>
 
-      <Modal opened={opened} onClose={close} title="Новый пользователь">
+      <Modal opened={opened} onClose={close} title={t('modalTitle')}>
         <form onSubmit={submit}>
           <TextInput
-            label="Имя"
-            placeholder="Alice"
+            label={t('nameLabel')}
+            placeholder={t('namePlaceholder')}
             value={name}
             onChange={(e) => setName(e.currentTarget.value)}
             maxLength={100}
@@ -64,7 +72,7 @@ export function UserPicker({ value, onChange }: UserPickerProps) {
           />
           <Group justify="flex-end" mt="md">
             <Button type="submit" loading={create.isPending} disabled={!name.trim()}>
-              Создать (кошелёк Circle)
+              {t('submit')}
             </Button>
           </Group>
         </form>

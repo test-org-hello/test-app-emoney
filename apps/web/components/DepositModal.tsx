@@ -17,6 +17,7 @@ import {
 } from '@mantine/core';
 import { IconCheck, IconCopy, IconDroplet, IconExternalLink } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { QRCodeSVG } from 'qrcode.react';
 import { useEffect, useState } from 'react';
 import { api, queryKeys } from '@/lib/api';
@@ -30,6 +31,8 @@ import type { DepositModalProps } from './DepositModal.types';
  * where to send them and then watches the history until the deposit shows up.
  */
 export function DepositModal({ user, opened, onClose }: DepositModalProps) {
+  const t = useTranslations('deposit');
+  const tc = useTranslations('common');
   const [openedAt, setOpenedAt] = useState(() => Date.now());
   useEffect(() => {
     if (opened) setOpenedAt(Date.now());
@@ -44,14 +47,19 @@ export function DepositModal({ user, opened, onClose }: DepositModalProps) {
   const received = (txs.data ?? []).find((t) => t.direction === 'deposit' && Date.parse(t.createdAt) >= openedAt - 5_000);
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Пополнение кошелька" size="lg">
+    <Modal opened={opened} onClose={onClose} title={t('title')} size="lg">
       <Stack gap="md">
         <Text size="sm">
-          Отправьте тестовые токены на адрес кошелька пользователя <b>{user.name}</b> в сети{' '}
-          <Badge component="span" variant="light" color="grape">
-            {user.blockchain}
-          </Badge>
-          . Пополнение появится в истории автоматически.
+          {t.rich('intro', {
+            name: user.name,
+            blockchain: user.blockchain,
+            network: (chunks) => (
+              <Badge component="span" variant="light" color="grape">
+                {chunks}
+              </Badge>
+            ),
+            b: (chunks) => <b>{chunks}</b>,
+          })}
         </Text>
 
         <Group align="center" wrap="nowrap" gap="lg">
@@ -60,7 +68,7 @@ export function DepositModal({ user, opened, onClose }: DepositModalProps) {
           </Box>
           <Stack gap={6} style={{ minWidth: 0 }}>
             <Text size="xs" c="dimmed">
-              Адрес для пополнения
+              {t('addressLabel')}
             </Text>
             <Code fz="sm" style={{ wordBreak: 'break-all' }}>
               {user.address}
@@ -75,7 +83,7 @@ export function DepositModal({ user, opened, onClose }: DepositModalProps) {
                   onClick={copy}
                   w="fit-content"
                 >
-                  {copied ? 'Скопировано' : 'Скопировать адрес'}
+                  {copied ? tc('copied') : t('copyAddress')}
                 </Button>
               )}
             </CopyButton>
@@ -84,15 +92,12 @@ export function DepositModal({ user, opened, onClose }: DepositModalProps) {
 
         <Box>
           <Text fw={600} size="sm" mb={4}>
-            Как получить тестовые USDC
+            {t('howTo')}
           </Text>
           <List type="ordered" size="sm" spacing={4}>
-            <List.Item>Скопируйте адрес выше.</List.Item>
-            <List.Item>
-              Откройте фаусет Circle, выберите <b>USDC</b> и сеть <b>Base Sepolia</b>. Проверьте сеть: если фаусет
-              по умолчанию предлагает другую (например, Arc Testnet), токены уйдут в неё и сюда не придут.
-            </List.Item>
-            <List.Item>Вставьте адрес и отправьте запрос. Лимит фаусета: один запрос в 2 часа на адрес и токен.</List.Item>
+            <List.Item>{t('step1')}</List.Item>
+            <List.Item>{t.rich('step2', { b: (chunks) => <b>{chunks}</b> })}</List.Item>
+            <List.Item>{t('step3')}</List.Item>
           </List>
           <Button
             component="a"
@@ -102,27 +107,26 @@ export function DepositModal({ user, opened, onClose }: DepositModalProps) {
             leftSection={<IconDroplet size={16} />}
             rightSection={<IconExternalLink size={14} />}
           >
-            Открыть faucet.circle.com
+            {t('openFaucet')}
           </Button>
         </Box>
 
         {received ? (
-          <Alert color={received.status === 'failed' ? 'red' : 'teal'} icon={<IconCheck />} title="Пополнение получено">
-            +{received.amount} {received.token.symbol} —{' '}
-            {received.status === 'completed'
-              ? 'зачислено на баланс.'
-              : received.status === 'failed'
-                ? 'перевод не выполнен.'
-                : 'ждём подтверждения сети, после этого сумма станет доступна.'}
+          <Alert color={received.status === 'failed' ? 'red' : 'teal'} icon={<IconCheck />} title={t('received')}>
+            {t(
+              received.status === 'completed'
+                ? 'receivedCompleted'
+                : received.status === 'failed'
+                  ? 'receivedFailed'
+                  : 'receivedPending',
+              { amount: received.amount, symbol: received.token.symbol },
+            )}
           </Alert>
         ) : (
           <Alert color="gray" variant="light">
             <Center inline>
               <Loader size="xs" mr="xs" />
-              <Text size="sm">
-                Ждём входящий перевод. Обычно он появляется через несколько секунд после зачисления в блокчейне
-                (вебхук Circle) или в течение 30 секунд (опрос Circle).
-              </Text>
+              <Text size="sm">{t('waiting')}</Text>
             </Center>
           </Alert>
         )}

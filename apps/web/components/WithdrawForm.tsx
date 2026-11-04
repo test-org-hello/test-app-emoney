@@ -4,7 +4,9 @@ import { Button, Card, Grid, Select, Text, TextInput, Title } from '@mantine/cor
 import { notifications } from '@mantine/notifications';
 import { IconSend } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { useEffect, useState, type FormEvent } from 'react';
+import { useErrorMessage } from '@/lib/errors';
 import { api, queryKeys } from '@/lib/api';
 import type { WithdrawFormProps } from './WithdrawForm.types';
 
@@ -22,6 +24,8 @@ function cmpDecimal(a: string, b: string): number {
 }
 
 export function WithdrawForm({ userId }: WithdrawFormProps) {
+  const t = useTranslations('withdraw');
+  const errorMessage = useErrorMessage();
   const qc = useQueryClient();
   const user = useQuery({ queryKey: queryKeys.user(userId), queryFn: () => api.getUser(userId) });
   const balances = (user.data?.balances ?? []).filter((b) => b.available !== '0');
@@ -44,13 +48,13 @@ export function WithdrawForm({ userId }: WithdrawFormProps) {
 
   const amountError = (() => {
     if (!amount) return null;
-    if (!AMOUNT_RE.test(amount)) return 'Введите число, например 1.5';
-    if ((amount.split('.')[1] ?? '').length > decimals) return `Не более ${decimals} знаков после точки`;
-    if (cmpDecimal(amount, '0') <= 0) return 'Сумма должна быть больше нуля';
-    if (balance && cmpDecimal(amount, balance.available) > 0) return `Доступно только ${balance.available}`;
+    if (!AMOUNT_RE.test(amount)) return t('errorNumber');
+    if ((amount.split('.')[1] ?? '').length > decimals) return t('errorDecimals', { decimals });
+    if (cmpDecimal(amount, '0') <= 0) return t('errorPositive');
+    if (balance && cmpDecimal(amount, balance.available) > 0) return t('errorExceeds', { available: balance.available });
     return null;
   })();
-  const addressError = destination && !ADDRESS_RE.test(destination.trim()) ? 'Нужен EVM-адрес 0x…' : null;
+  const addressError = destination && !ADDRESS_RE.test(destination.trim()) ? t('errorAddress') : null;
 
   const withdraw = useMutation({
     mutationFn: () => api.withdraw(userId, { tokenId: tokenId!, destinationAddress: destination.trim(), amount }),
@@ -62,11 +66,15 @@ export function WithdrawForm({ userId }: WithdrawFormProps) {
       setAmount('');
       notifications.show(
         tx.status === 'failed'
-          ? { color: 'red', title: 'Вывод отклонён', message: tx.errorReason ?? 'Circle отклонил перевод' }
-          : { color: 'green', title: 'Вывод отправлен', message: `${tx.amount} ${tx.token.symbol} — статус в истории` },
+          ? { color: 'red', title: t('rejected'), message: tx.errorReason ?? t('rejectedFallback') }
+          : {
+              color: 'green',
+              title: t('sent'),
+              message: t('sentMessage', { amount: tx.amount, symbol: tx.token.symbol }),
+            },
       );
     },
-    onError: (e) => notifications.show({ color: 'red', title: 'Вывод не создан', message: e.message }),
+    onError: (e) => notifications.show({ color: 'red', title: t('failed'), message: errorMessage(e) }),
   });
 
   const submit = (e: FormEvent) => {
@@ -79,18 +87,18 @@ export function WithdrawForm({ userId }: WithdrawFormProps) {
   return (
     <Card withBorder padding="lg">
       <Title order={4} mb="sm">
-        Вывод
+        {t('title')}
       </Title>
       {balances.length === 0 ? (
         <Text c="dimmed" size="sm">
-          Нет доступных средств для вывода.
+          {t('noFunds')}
         </Text>
       ) : (
         <form onSubmit={submit}>
           <Grid align="flex-start">
             <Grid.Col span={{ base: 12, sm: 2 }}>
               <Select
-                label="Токен"
+                label={t('token')}
                 data={balances.map((b) => ({ value: b.token.id, label: b.token.symbol }))}
                 value={tokenId}
                 onChange={setTokenId}
@@ -99,7 +107,7 @@ export function WithdrawForm({ userId }: WithdrawFormProps) {
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 6 }}>
               <TextInput
-                label="Адрес получателя"
+                label={t('destination')}
                 placeholder="0x…"
                 value={destination}
                 onChange={(e) => setDestination(e.currentTarget.value)}
@@ -109,24 +117,26 @@ export function WithdrawForm({ userId }: WithdrawFormProps) {
             </Grid.Col>
             <Grid.Col span={{ base: 12, sm: 4 }}>
               <TextInput
-                label="Сумма"
+                label={t('amount')}
                 placeholder="0.00"
                 value={amount}
                 onChange={(e) => setAmount(e.currentTarget.value.replace(',', '.').trim())}
                 error={amountError}
-                description={balance ? `Доступно: ${balance.available} ${balance.token.symbol}` : undefined}
+                description={
+                  balance ? t('availableHint', { amount: balance.available, symbol: balance.token.symbol }) : undefined
+                }
                 inputMode="decimal"
                 rightSectionWidth={60}
                 rightSection={
                   <Button size="compact-xs" variant="subtle" onClick={() => balance && setAmount(balance.available)}>
-                    MAX
+                    {t('max')}
                   </Button>
                 }
               />
             </Grid.Col>
           </Grid>
           <Button type="submit" mt="md" leftSection={<IconSend size={16} />} loading={withdraw.isPending} disabled={!canSubmit}>
-            Вывести
+            {t('submit')}
           </Button>
         </form>
       )}

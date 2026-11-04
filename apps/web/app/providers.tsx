@@ -4,7 +4,6 @@ import { MantineProvider, createTheme } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
-import { AuthGate } from '@/components/AuthGate';
 import type { WithChildren } from './app.types';
 
 const theme = createTheme({
@@ -24,7 +23,7 @@ export function Providers({ children }: WithChildren) {
     <QueryClientProvider client={queryClient}>
       <MantineProvider theme={theme} defaultColorScheme="auto">
         <Notifications position="top-right" />
-        <AuthGate>{children}</AuthGate>
+        {children}
       </MantineProvider>
     </QueryClientProvider>
   );

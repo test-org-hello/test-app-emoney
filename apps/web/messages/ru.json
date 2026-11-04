@@ -1,0 +1,107 @@
+{
+  "meta": {
+    "description": "Тестовый криптокошелёк на Circle Developer-Controlled Wallets (Base Sepolia)"
+  },
+  "common": {
+    "appName": "Circle Wallet",
+    "network": "BASE-SEPOLIA testnet",
+    "copy": "Копировать",
+    "copied": "Скопировано",
+    "openInExplorer": "Открыть в обозревателе",
+    "loadError": "Ошибка загрузки",
+    "language": "Язык"
+  },
+  "home": {
+    "selectUserTitle": "Выберите пользователя",
+    "selectUserText": "Создайте пользователя или выберите существующего в правом верхнем углу. У каждого пользователя свой кошелёк Circle и свой адрес для пополнения."
+  },
+  "userPicker": {
+    "loading": "Загрузка…",
+    "placeholder": "Выберите пользователя",
+    "nothingFound": "Нет пользователей",
+    "new": "Новый",
+    "modalTitle": "Новый пользователь",
+    "nameLabel": "Имя",
+    "namePlaceholder": "Alice",
+    "submit": "Создать (кошелёк Circle)",
+    "created": "Пользователь создан",
+    "createdMessage": "Адрес: {address}",
+    "createFailed": "Не удалось создать пользователя"
+  },
+  "wallet": {
+    "depositAddress": "Адрес для пополнения ({blockchain})",
+    "deposit": "Пополнить",
+    "sync": "Синхронизировать",
+    "syncHint": "Подтянуть операции из Circle, не дожидаясь вебхука",
+    "synced": "Синхронизировано с Circle: {count, plural, =0 {новых операций нет} one {обработана # операция} few {обработано # операции} other {обработано # операций}}",
+    "syncFailed": "Ошибка синхронизации",
+    "balance": "Баланс",
+    "empty": "Пока пусто. Нажмите «Пополнить», чтобы получить адрес и тестовые USDC.",
+    "token": "Токен",
+    "available": "Доступно",
+    "incoming": "Поступает",
+    "outgoing": "Выводится"
+  },
+  "deposit": {
+    "title": "Пополнение кошелька",
+    "intro": "Отправьте тестовые токены на адрес кошелька пользователя <b>{name}</b> в сети <network>{blockchain}</network>. Пополнение появится в истории автоматически.",
+    "addressLabel": "Адрес для пополнения",
+    "copyAddress": "Скопировать адрес",
+    "howTo": "Как получить тестовые USDC",
+    "step1": "Скопируйте адрес выше.",
+    "step2": "Откройте фаусет Circle, выберите <b>USDC</b> и сеть <b>Base Sepolia</b>. Проверьте сеть: если фаусет по умолчанию предлагает другую (например, Arc Testnet), токены уйдут в неё и сюда не придут.",
+    "step3": "Вставьте адрес и отправьте запрос. Лимит фаусета: один запрос в 2 часа на адрес и токен.",
+    "openFaucet": "Открыть faucet.circle.com",
+    "received": "Пополнение получено",
+    "receivedCompleted": "+{amount} {symbol} — зачислено на баланс.",
+    "receivedFailed": "+{amount} {symbol} — перевод не выполнен.",
+    "receivedPending": "+{amount} {symbol} — ждём подтверждения сети, после этого сумма станет доступна.",
+    "waiting": "Ждём входящий перевод. Обычно он появляется через несколько секунд после зачисления в блокчейне (вебхук Circle) или в течение 30 секунд (опрос Circle)."
+  },
+  "withdraw": {
+    "title": "Вывод",
+    "noFunds": "Нет доступных средств для вывода.",
+    "token": "Токен",
+    "destination": "Адрес получателя",
+    "amount": "Сумма",
+    "availableHint": "Доступно: {amount} {symbol}",
+    "max": "MAX",
+    "submit": "Вывести",
+    "errorNumber": "Введите число, например 1.5",
+    "errorDecimals": "Не более {decimals} знаков после точки",
+    "errorPositive": "Сумма должна быть больше нуля",
+    "errorExceeds": "Доступно только {available}",
+    "errorAddress": "Нужен EVM-адрес 0x…",
+    "rejected": "Вывод отклонён",
+    "rejectedFallback": "Circle отклонил перевод",
+    "sent": "Вывод отправлен",
+    "sentMessage": "{amount} {symbol} — статус в истории",
+    "failed": "Вывод не создан"
+  },
+  "history": {
+    "title": "История операций",
+    "empty": "Операций пока нет.",
+    "date": "Дата",
+    "type": "Тип",
+    "amount": "Сумма",
+    "counterparty": "Контрагент",
+    "status": "Статус",
+    "circle": "Circle",
+    "tx": "Tx",
+    "deposit": "Пополнение",
+    "withdrawal": "Вывод",
+    "from": "от {address}",
+    "to": "на {address}",
+    "statusPending": "В обработке",
+    "statusCompleted": "Выполнен",
+    "statusFailed": "Не выполнен"
+  },
+  "errors": {
+    "network_error": "Бэкенд недоступен. Проверьте, что он запущен.",
+    "not_found": "Не найдено",
+    "insufficient_funds": "Сумма больше доступного баланса",
+    "validation_error": "Некорректные данные",
+    "circle_error": "Circle недоступен или вернул ошибку",
+    "internal_error": "Внутренняя ошибка сервера"
+  }
+}

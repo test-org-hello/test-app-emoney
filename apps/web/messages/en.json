@@ -1,0 +1,107 @@
+{
+  "meta": {
+    "description": "Test crypto wallet on Circle Developer-Controlled Wallets (Base Sepolia)"
+  },
+  "common": {
+    "appName": "Circle Wallet",
+    "network": "BASE-SEPOLIA testnet",
+    "copy": "Copy",
+    "copied": "Copied",
+    "openInExplorer": "Open in explorer",
+    "loadError": "Failed to load",
+    "language": "Language"
+  },
+  "home": {
+    "selectUserTitle": "Select a user",
+    "selectUserText": "Create a user or pick an existing one in the top right corner. Each user has their own Circle wallet and deposit address."
+  },
+  "userPicker": {
+    "loading": "Loading…",
+    "placeholder": "Select a user",
+    "nothingFound": "No users",
+    "new": "New",
+    "modalTitle": "New user",
+    "nameLabel": "Name",
+    "namePlaceholder": "Alice",
+    "submit": "Create (Circle wallet)",
+    "created": "User created",
+    "createdMessage": "Address: {address}",
+    "createFailed": "Could not create the user"
+  },
+  "wallet": {
+    "depositAddress": "Deposit address ({blockchain})",
+    "deposit": "Deposit",
+    "sync": "Sync",
+    "syncHint": "Pull transactions from Circle without waiting for a webhook",
+    "synced": "Synced with Circle: {count, plural, =0 {no new transactions} one {# transaction processed} other {# transactions processed}}",
+    "syncFailed": "Sync failed",
+    "balance": "Balance",
+    "empty": "Nothing here yet. Click “Deposit” to get the address and test USDC.",
+    "token": "Token",
+    "available": "Available",
+    "incoming": "Incoming",
+    "outgoing": "Outgoing"
+  },
+  "deposit": {
+    "title": "Deposit",
+    "intro": "Send test tokens to the wallet address of <b>{name}</b> on <network>{blockchain}</network>. The deposit will show up in the history automatically.",
+    "addressLabel": "Deposit address",
+    "copyAddress": "Copy address",
+    "howTo": "How to get test USDC",
+    "step1": "Copy the address above.",
+    "step2": "Open the Circle faucet, choose <b>USDC</b> and the <b>Base Sepolia</b> network. Check the network: if the faucet suggests another one by default (e.g. Arc Testnet), the tokens go there and never arrive here.",
+    "step3": "Paste the address and submit. Faucet limit: one request per 2 hours per address and token.",
+    "openFaucet": "Open faucet.circle.com",
+    "received": "Deposit received",
+    "receivedCompleted": "+{amount} {symbol} — credited to the balance.",
+    "receivedFailed": "+{amount} {symbol} — the transfer failed.",
+    "receivedPending": "+{amount} {symbol} — waiting for network confirmation, then the amount becomes available.",
+    "waiting": "Waiting for the incoming transfer. It usually shows up a few seconds after it lands on-chain (Circle webhook) or within 30 seconds (Circle polling)."
+  },
+  "withdraw": {
+    "title": "Withdraw",
+    "noFunds": "No funds available to withdraw.",
+    "token": "Token",
+    "destination": "Recipient address",
+    "amount": "Amount",
+    "availableHint": "Available: {amount} {symbol}",
+    "max": "MAX",
+    "submit": "Withdraw",
+    "errorNumber": "Enter a number, e.g. 1.5",
+    "errorDecimals": "At most {decimals} decimal places",
+    "errorPositive": "Amount must be greater than zero",
+    "errorExceeds": "Only {available} available",
+    "errorAddress": "An EVM address 0x… is required",
+    "rejected": "Withdrawal rejected",
+    "rejectedFallback": "Circle rejected the transfer",
+    "sent": "Withdrawal sent",
+    "sentMessage": "{amount} {symbol} — see the status in the history",
+    "failed": "Withdrawal not created"
+  },
+  "history": {
+    "title": "Transaction history",
+    "empty": "No transactions yet.",
+    "date": "Date",
+    "type": "Type",
+    "amount": "Amount",
+    "counterparty": "Counterparty",
+    "status": "Status",
+    "circle": "Circle",
+    "tx": "Tx",
+    "deposit": "Deposit",
+    "withdrawal": "Withdrawal",
+    "from": "from {address}",
+    "to": "to {address}",
+    "statusPending": "Pending",
+    "statusCompleted": "Completed",
+    "statusFailed": "Failed"
+  },
+  "errors": {
+    "network_error": "Backend is unreachable. Make sure it is running.",
+    "not_found": "Not found",
+    "insufficient_funds": "Amount exceeds the available balance",
+    "validation_error": "Invalid data",
+    "circle_error": "Circle is unavailable or returned an error",
+    "internal_error": "Internal server error"
+  }
+}

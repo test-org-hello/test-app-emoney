@@ -3,14 +3,16 @@
 import { Alert, AppShell, Badge, Container, Group, Stack, Text, Title } from '@mantine/core';
 import { IconInfoCircle, IconWallet } from '@tabler/icons-react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { Suspense, useCallback } from 'react';
-import { AccountMenu } from '@/components/AuthGate';
+import { LocaleSwitcher } from '@/components/LocaleSwitcher';
 import { TransactionsTable } from '@/components/TransactionsTable';
 import { UserPicker } from '@/components/UserPicker';
 import { WalletCard } from '@/components/WalletCard';
 import { WithdrawForm } from '@/components/WithdrawForm';
 
 function Home() {
+  const t = useTranslations();
   const router = useRouter();
   const params = useSearchParams();
   const userId = params.get('user');
@@ -27,14 +29,14 @@ function Home() {
           <Group h="100%" justify="space-between">
             <Group gap="xs">
               <IconWallet size={26} />
-              <Title order={3}>Circle Wallet</Title>
+              <Title order={3}>{t('common.appName')}</Title>
               <Badge variant="light" color="grape">
-                BASE-SEPOLIA testnet
+                {t('common.network')}
               </Badge>
             </Group>
             <Group gap="md" wrap="nowrap">
               <UserPicker value={userId} onChange={selectUser} />
-              <AccountMenu />
+              <LocaleSwitcher />
             </Group>
           </Group>
         </Container>
@@ -49,11 +51,8 @@ function Home() {
               <TransactionsTable userId={userId} />
             </Stack>
           ) : (
-            <Alert icon={<IconInfoCircle />} title="Выберите пользователя" mt="xl">
-              <Text size="sm">
-                Создайте пользователя или выберите существующего в правом верхнем углу. У каждого пользователя свой
-                кошелёк Circle и свой адрес для пополнения.
-              </Text>
+            <Alert icon={<IconInfoCircle />} title={t('home.selectUserTitle')} mt="xl">
+              <Text size="sm">{t('home.selectUserText')}</Text>
             </Alert>
           )}
         </Container>

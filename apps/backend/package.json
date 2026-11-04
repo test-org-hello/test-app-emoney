@@ -12,8 +12,7 @@
     "test": "vitest run",
     "circle:entity-secret": "tsx --env-file-if-exists=.env scripts/entity-secret.ts",
     "circle:subscribe-webhook": "tsx --env-file-if-exists=.env scripts/subscribe-webhook.ts",
-    "circle:fake": "tsx scripts/fake-circle.ts",
-    "auth:create-user": "tsx --env-file-if-exists=.env scripts/create-auth-user.ts"
+    "circle:fake": "tsx scripts/fake-circle.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

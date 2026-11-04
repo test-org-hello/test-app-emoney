@@ -1,8 +1,9 @@
 export const shortAddress = (a: string | null | undefined, size = 6) =>
   a ? `${a.slice(0, size + 2)}…${a.slice(-size + 2)}` : '—';
 
-export const formatDate = (iso: string) =>
-  new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'medium' });
+/** Date/time in the UI language, in the viewer's time zone. */
+export const formatDate = (iso: string, locale: string) =>
+  new Date(iso).toLocaleString(locale, { dateStyle: 'short', timeStyle: 'medium' });
 
 export const FAUCET_URL = 'https://faucet.circle.com';
 

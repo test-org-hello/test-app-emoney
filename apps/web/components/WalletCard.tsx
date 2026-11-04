@@ -18,7 +18,9 @@ import { notifications } from '@mantine/notifications';
 import { useDisclosure } from '@mantine/hooks';
 import { IconCheck, IconCopy, IconExternalLink, IconPlus, IconRefresh } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { useEffect } from 'react';
+import { useErrorMessage } from '@/lib/errors';
 import { api, ApiRequestError, queryKeys } from '@/lib/api';
 import { addressExplorerUrl } from '@/lib/format';
 import { DepositModal } from './DepositModal';
@@ -27,6 +29,9 @@ import type { WalletCardProps } from './WalletCard.types';
 export const REFRESH_MS = 4000;
 
 export function WalletCard({ userId, onMissing }: WalletCardProps) {
+  const t = useTranslations('wallet');
+  const tc = useTranslations('common');
+  const errorMessage = useErrorMessage();
   const qc = useQueryClient();
   const [depositOpened, deposit] = useDisclosure(false);
   const user = useQuery({
@@ -43,13 +48,13 @@ export function WalletCard({ userId, onMissing }: WalletCardProps) {
     mutationFn: () => api.sync(userId),
     onSuccess: async ({ updated }) => {
       await qc.invalidateQueries({ queryKey: queryKeys.user(userId) });
-      notifications.show({ message: `Синхронизировано с Circle, обработано операций: ${updated}` });
+      notifications.show({ message: t('synced', { count: updated }) });
     },
-    onError: (e) => notifications.show({ color: 'red', title: 'Ошибка синхронизации', message: e.message }),
+    onError: (e) => notifications.show({ color: 'red', title: t('syncFailed'), message: errorMessage(e) }),
   });
 
   if (user.isLoading) return <Loader />;
-  if (!user.data) return <Text c="red">{user.error?.message ?? 'Ошибка загрузки'}</Text>;
+  if (!user.data) return <Text c="red">{user.error ? errorMessage(user.error) : tc('loadError')}</Text>;
   const u = user.data;
   const explorer = addressExplorerUrl(u.blockchain, u.address);
 
@@ -59,13 +64,13 @@ export function WalletCard({ userId, onMissing }: WalletCardProps) {
         <Stack gap={4}>
           <Title order={3}>{u.name}</Title>
           <Text size="sm" c="dimmed">
-            Адрес для пополнения ({u.blockchain})
+            {t('depositAddress', { blockchain: u.blockchain })}
           </Text>
           <Group gap={4}>
             <Code fz="sm">{u.address}</Code>
             <CopyButton value={u.address}>
               {({ copied, copy }) => (
-                <Tooltip label={copied ? 'Скопировано' : 'Копировать'}>
+                <Tooltip label={copied ? tc('copied') : tc('copy')}>
                   <ActionIcon variant="subtle" color={copied ? 'teal' : 'gray'} onClick={copy}>
                     {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
                   </ActionIcon>
@@ -73,7 +78,7 @@ export function WalletCard({ userId, onMissing }: WalletCardProps) {
               )}
             </CopyButton>
             {explorer && (
-              <Tooltip label="Открыть в обозревателе">
+              <Tooltip label={tc('openInExplorer')}>
                 <ActionIcon variant="subtle" color="gray" component="a" href={explorer} target="_blank">
                   <IconExternalLink size={16} />
                 </ActionIcon>
@@ -83,16 +88,16 @@ export function WalletCard({ userId, onMissing }: WalletCardProps) {
         </Stack>
         <Group gap="xs">
           <Button leftSection={<IconPlus size={16} />} onClick={deposit.open}>
-            Пополнить
+            {t('deposit')}
           </Button>
-          <Tooltip label="Подтянуть операции из Circle, не дожидаясь вебхука">
+          <Tooltip label={t('syncHint')}>
             <Button
               variant="default"
               leftSection={<IconRefresh size={16} />}
               loading={sync.isPending}
               onClick={() => sync.mutate()}
             >
-              Синхронизировать
+              {t('sync')}
             </Button>
           </Tooltip>
         </Group>
@@ -101,20 +106,20 @@ export function WalletCard({ userId, onMissing }: WalletCardProps) {
       <DepositModal user={u} opened={depositOpened} onClose={deposit.close} />
 
       <Title order={5} mt="lg" mb="xs">
-        Баланс
+        {t('balance')}
       </Title>
       {u.balances.length === 0 ? (
         <Text c="dimmed" size="sm">
-          Пока пусто. Нажмите «Пополнить», чтобы получить адрес и тестовые USDC.
+          {t('empty')}
         </Text>
       ) : (
         <Table withTableBorder={false} verticalSpacing="xs" maw={560}>
           <Table.Thead>
             <Table.Tr>
-              <Table.Th>Токен</Table.Th>
-              <Table.Th ta="right">Доступно</Table.Th>
-              <Table.Th ta="right">Поступает</Table.Th>
-              <Table.Th ta="right">Выводится</Table.Th>
+              <Table.Th>{t('token')}</Table.Th>
+              <Table.Th ta="right">{t('available')}</Table.Th>
+              <Table.Th ta="right">{t('incoming')}</Table.Th>
+              <Table.Th ta="right">{t('outgoing')}</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
